@@ -2,7 +2,13 @@ var g    = require('./global.js'), // XXX: Why does this work? These are not cor
     http = require('http'),   // XXX: Must use relative path!
     url  = require('url'),
     api  = require('./api.js'),
-    push = require('./push.js');
+    push = require('./push.js'),
+    express = require('express'),
+    app  = express();
+
+app.use(express.static(__dirname + '/node_modules'));
+app.listen(3000);
+console.log('Serving static content on 3000');
 
 /** Configuration **/
 var args = [];
@@ -31,7 +37,9 @@ g.server = http.createServer(function (req, res) {
     // XXX: It's very important that these request handlers are invoked with apply().
     // Turns out the context must be supplied manually so that the keyword this
     // works properly in the module.
-    fn.apply(api, [req, res, urlParts.query]);
+    fn.apply(api, [urlParts.query, function (ret) {
+      res.end(JSON.stringify(ret));      
+    }]);
   } else {
     res.writeHead(404);
     res.end('Unsupported API call ' + req.url);

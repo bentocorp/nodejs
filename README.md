@@ -28,6 +28,7 @@ Install the necessary node modules and create a .gitignore file so you only comm
 ```
 ./npm install socket.io
 ./npm install redis
+./npm install express
 touch .gitignore
 ```
 

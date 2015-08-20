@@ -7,15 +7,19 @@ var g = require('./global.js'),
     url = require('url');
 var that;
 module.exports = {
-  
-  _res: function (code, msg) {
-    return JSON.stringify({
-      'code': code, 'msg': msg,
-    });
+
+  _res: function (code, msg, ret) {
+    return {
+      'code': code, 'msg': msg, 'ret': ret,
+    };
   },
   
-  _success: function () {
-    return that._res(0, '');
+  _success: function (ret) {
+    return that._res(0, '', ret);
+  },
+  
+  _error: function (code, msg) {
+    return that._res(code, msg, null);
   },
   
   _requestFilters: {
@@ -23,31 +27,32 @@ module.exports = {
   },
   
   isValid: function (req) {
-    var urlParts = url.parse(req.url, true);
-    var fn = that._requestFilters[urlParts.pathname];
-    return g.isset(fn) ? fn(req, urlParts) : true;
+    //var urlParts = url.parse(req.url, true);
+    //var filters = that._requestFilters[urlParts.pathname];
+    // Do something here.
+    return true;
   },
   
   /** Push notifications **/ 
-  
-  '/api/push': function (req, res, params) {
+
+  '/api/push': function (params, fn) {
     var target = JSON.parse(params['target']);
     var msg = params['msg'];
     if (target instanceof Array) {
       // Push notification to queue and schedule a pop.
       for (var i = 0; i < target.length; i++) {
-        push.queue(target[i], msg);
+        push.queue(target[i]+'', msg);
       }
     }
     // TODO: Support * and group notifications.
-    res.end(that._success());
+    fn(that._success([]));
   },
   
   /** Geotracking **/
   
   WS_LOC: 'loc',
-  _cacheKeyLngLat: function (uid) {
-    return 'loc_' + uid + '.lnglat';
+  _cacheKeyLatLng: function (uid) {
+    return 'loc_' + uid + '.latlng';
   },
   _cacheKeySubscribers: function (uid) {
     return 'loc_' + uid + '.subscribers';
@@ -56,9 +61,9 @@ module.exports = {
   /**
    * Get (one time) the location of one or more clients.
    */
-  '/api/gloc': function (req, res, params) {
+  '/api/gloc': function (params, fn) {
       // TODO
-      res.end('Currently not implemented');
+      fn(that._error(1, 'This API is currently not implemented.'));
   },
   /**
    * Update GPS location.
@@ -67,45 +72,67 @@ module.exports = {
    * @param lng Longitude.
    * @param lat Latitude.
    */
-  '/api/uloc': function (req, res, params) {
-    var uid = params['uid'], lng = params['lng'], lat = params['lat'];
-    var obj = {
-      'lng': lng,
-      'lat': lat
-    };
-    g['redis'].set(that._cacheKeyLngLat(uid), JSON.stringify(obj), function (err, ret) {
-      res.end(that._success());
-      // Then push update to all subscribers.
-      g['redis'].SMEMBERS(that._cacheKeySubscribers(uid), function (err, ret) {
-        for (var i = 0; i < ret.length; i++) {
-          var soc = g.getSocket(ret[i]);
-          if (g.isset(soc)) {
-            obj.clientId = uid;
-            soc.emit('loc', obj);
+  '/api/uloc': function (params, fn) {
+    var uid = params['uid'],
+        lat = params['lat'],
+        lng = params['lng'],
+        obj = {
+          'lat': lat,
+          'lng': lng,
+        };
+    // Update location in cache.
+    g['redis'].SET(that._cacheKeyLatLng(uid), JSON.stringify(obj), function (err, ret) {
+      if (err != null) {
+        console.log('redis: ' + err);
+        fn(that._error(1, err));
+      } else {
+        fn(that._success([]));
+        // Then push loc update to all subscribers.
+        g['redis'].SMEMBERS(that._cacheKeySubscribers(uid), function (err, ret) {
+          if (err != null) {
+            console.log('redis: ' + err);
+          } else {
+            for (var i = 0; i < ret.length; i++) {
+              var soc = g.getSocket(ret[i]);
+              if (!g.isEmpty(soc)) {
+                obj.clientId = uid;
+                soc.emit('loc', obj);
+              }
+            }
           }
-        }
-      });
+        // g['redis'].SMEMBERS
+        });
+      }
+    // g['redis'].SET
     });
-    
   },
 
-  '/api/track': function (req, res, params) {
+  '/api/track': function (params, fn) {
     var uid = params['uid'],
         clientId = params['clientId'];
-    g['redis'].sadd(that._cacheKeySubscribers(clientId), uid, function (err, ret) {
-      res.end(that._success());
-      g['redis'].get(that._cacheKeyLngLat(clientId), function (err, ret) {
-        if (!g.isEmpty(ret)) {
-          var soc = g.getSocket(uid);
-          if (g.isset(soc)) {
-            var data = JSON.parse(ret);
-            data.clientId = clientId;
-            soc.emit('loc', data);
+    g['redis'].SADD(that._cacheKeySubscribers(clientId), uid, function (err, ret) {
+      if (err != null) {
+        console.log('redis: ' + err);
+        fn(that._error(1, err));
+      } else {
+        fn(that._success([]));
+        // Then if there's any location data available, immediately send it.
+        g['redis'].GET(that._cacheKeyLatLng(clientId), function (err, ret) {
+          if (err != null) {
+            console.log('redis: ' + err);
+          } else if (!g.isEmpty(ret)) {
+            var soc = g.getSocket(uid);
+            if (g.isset(soc)) {
+              var obj = JSON.parse(ret);
+              obj.clientId = clientId;
+              soc.emit('loc', obj);
+            }
           }
-        }
-      });
+        // g['redis'].GET
+        });
+      }
+      // g['redis'].SADD
     });
   },
-
 };
 that = module.exports;

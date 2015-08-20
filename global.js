@@ -87,7 +87,7 @@ module.exports = {
     if (!that.isEmpty(sid)) {
       return that.io.sockets.connected[sid];
     }
-    return 'undefined';
+    return null;
   }
 };
 that = module.exports;
