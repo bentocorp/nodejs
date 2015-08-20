@@ -2,8 +2,8 @@
  * @author
  * @copyright
  */
-var g = require('global'),
-    push = require('push'),
+var g = require('./global.js'),
+    push = require('./push.js'),
     url = require('url');
 var that;
 module.exports = {
@@ -40,7 +40,7 @@ module.exports = {
       }
     }
     // TODO: Support * and group notifications.
-    res.end(that._success);
+    res.end(that._success());
   },
   
   /** Geotracking **/
@@ -80,6 +80,7 @@ module.exports = {
         for (var i = 0; i < ret.length; i++) {
           var soc = g.getSocket(ret[i]);
           if (g.isset(soc)) {
+            obj.clientId = uid;
             soc.emit('loc', obj);
           }
         }

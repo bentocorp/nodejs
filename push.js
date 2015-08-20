@@ -2,7 +2,7 @@
  * @author
  * @copyright
  */
-var g = require('global');
+var g = require('./global.js');
 module.exports = {
   WS_PUSH: 'push',
   _cacheKey: function (uid) {

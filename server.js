@@ -1,8 +1,8 @@
-var g    = require('global'),
-    http = require('http'),
+var g    = require('./global.js'), // XXX: Why does this work? These are not core modules.
+    http = require('http'),   // XXX: Must use relative path!
     url  = require('url'),
-    api  = require('api'),
-    push = require('push');
+    api  = require('./api.js'),
+    push = require('./push.js');
 
 /** Configuration **/
 var args = [];
@@ -14,7 +14,7 @@ if (!g.isset(args['env'])){
   throw 'Missing env argument.';
 }
 console.log('env='+args['env']);
-var conf = require('conf')[args['env']];
+var conf = require('./conf.js')[args['env']];
 
 console.log('Attempting to connect to redis at ' + conf.redis.host + ':' + conf.redis.port);
 g.redis = require('redis').createClient(conf.redis.port, conf.redis.host, { });
@@ -65,6 +65,7 @@ g.io.on('connection', function (soc) {
 });
 
 /* Start the server. */
-g.server.listen(8080);//.setTimeout(30000); // 30 sec
-console.log("Hello, World! Server listening on port 8080.");
+var serverPort = conf.server.port;
+g.server.listen(serverPort);//.setTimeout(30000); // 30 sec
+console.log('Hello, World! Server listening on port ' + serverPort + '.');
 
