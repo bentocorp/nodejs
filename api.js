@@ -115,8 +115,12 @@ module.exports = {
         console.log('redis: ' + err);
         fn(that._error(1, err));
       } else {
-        fn(that._success([]));
+        var cSoc = g.getSocket(clientId);
+        fn(that._success({
+          connected: g.isEmpty(cSoc) ? false : cSoc.connected,
+        }));
         // Then if there's any location data available, immediately send it.
+        // XXX: Do not send stale location data. Maybe only send if client is online?
         g['redis'].GET(that._cacheKeyLatLng(clientId), function (err, ret) {
           if (err != null) {
             console.log('redis: ' + err);

@@ -1,0 +1,161 @@
+<html>
+  <head>
+    <script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'></script>
+    <script src='./socket.io/node_modules/socket.io-client/socket.io.js'></script>
+    <script type='text/javascript'>
+      // Make sure browser supports WebSocket API. Is this still needed if we
+      // include socket.io?
+      if ('WebSocket' in window) {
+        
+      } else { 
+        console.log('WebSocket not supported.')
+      }
+      var soc;
+      io.timeout = 5000; // 5 seconds
+      
+      function println(msg) {
+        $('#client').append(msg+'\n');
+      }
+      
+      function switchControls(id) {
+        $('.ctrl').hide();
+        $('#ctrl-'+id).show();
+        switch (id) {
+       	  case 'a': $('body').css({'background-color': 'white'}); break;
+          case 'd': $('body').css({'background-color': 'orange'}); break;
+          case 'c': $('body').css({'background-color': 'green'}); break;
+        }
+      }
+      
+      function connect() {
+        // Tries to upgrade http:// to ws:// and falls back on long polling if
+        // unsuccessful.
+        var id = parseInt($('#client-id').val());
+          if (soc == null) {
+          // XXX: Subsequent calls will not create new connections unless specified. However, a new Socket
+          // instance is created referencing the same underlying connection so callbacks may be invoked
+          // multiple times so be careful.
+          // { 'force new connection': true }
+          soc = io.connect(url, { query: "clientId="+id });
+          
+          soc.on('connect', function () {
+            println('Connection established.');
+          });
+          
+          soc.on('reconnecting', function (n) {
+            println('Attempting to reconnect (n='+n+').');
+          });
+           
+          soc.on('reconnect', function () {
+            println('Successfully reconnected.')
+          })
+          
+          soc.on('push', function (msg) {
+            println(msg);
+          })
+          
+          soc.on('loc', function (e) {
+            var msg = "Location update for client " + e.clientId + ": (" + e.lat + ", " + e.lng + ")";
+            println(msg);
+          });
+        }
+ 
+      }
+      
+      var host = '54.191.141.101'; // bento-dev-nodejs01
+      var port = 8081;
+      //var host = 'localhost';
+      //var port = 8080;
+      var url = 'http://' + host + ':' + port;
+      
+      function uloc(_lat, _lng) {
+        $.getJSON(url + '/api/uloc', {
+          uid: $('#client-id').val(),
+          lng: _lng,
+          lat: _lat,
+        }).done(function (ret) {
+          if (ret.code == 0) {
+            println('Successfully updated loc=' + _lat + ', ' + _lng);
+          } else {
+            println('Failed.');
+          }
+        });
+      }
+      
+      function track(_clientId) {
+        println('Tracking ' + _clientId);
+        $.getJSON(url + '/api/track', {
+          uid: $('#client-id').val(),
+          clientId: _clientId,
+        }).done(function (ret) {
+          if (ret.code == 0) {
+            //println('Tracking ' + _clientId);
+          } else {
+            println('Failed.');
+          }
+        });
+      }
+      
+      function push(_target, _msg) {
+        $.getJSON(url + '/api/push', {
+          target: JSON.stringify([_target]),
+          msg: _msg,
+        }).done(function (ret) {
+          if (ret.code == 0) {
+            println('Sent to ' + _target + ': ' + _msg);
+          } else {
+            println('Failed');
+          }
+        }); 
+      }
+      
+      var c = null;
+      var theta = 0;
+      
+      function move() {
+        window.setInterval(function () {
+          var lat = parseFloat($('#coord-x').val());
+          var lng = parseFloat($('#coord-y').val());
+          
+          if (c == null) {
+            c = [lng - 0.002, lat];
+          }
+          theta = theta + 0.02;
+          var p = [c[0] + 0.002 * Math.cos(theta), c[1] + 0.002 * Math.sin(theta)];
+          
+          $('#coord-x').val(p[1]);
+          $('#coord-y').val(p[0]);
+          $('#uloc-button').click();
+        }, 100);
+      }
+      
+    </script>
+  </head>
+  
+  <body style="background-color: green; font: 12pt Arial">
+    <div>
+      Client ID:<input id="client-id" type="text" size="6"/>
+      <input type="submit" value="Connect device." onclick="connect();"/>
+    </div>
+    Type:
+    <select onchange="var i = this.selectedIndex; switchControls(this[i].value);">
+      <option value='c'>Customer App</option>
+      <option value='d'>Driver App</option>
+      <option value='a'>Backend</option>
+    </select>
+    <div class="ctrl" id="ctrl-c">Driver:<input id="driver-id" type="text" size="6"/><input type="submit" value="Track" onclick="track($('#driver-id').val());"/></div>
+    <div class="ctrl" id="ctrl-d" style="display: none;">
+      lat:<input id="coord-x" type="text" size="5"/>
+      lng:<input id="coord-y" type="text" size="5"/>
+      <input id='uloc-button' type="submit" value="Send" onclick="uloc($('#coord-x').val(), $('#coord-y').val());"/>
+      <input type='submit' value="Move" onclick="move();"/>
+    </div>
+    <div class="ctrl" id="ctrl-a" style="display: none;">
+      Target:<input id="target-id" type="text" size="5"/>
+      Msg:<input id="msg" type="text" size="15"/>
+      <input type="submit" value="Send" onclick="push($('#target-id').val(), $('#msg').val());"/>
+    </div>
+    <div><textarea id="client" rows='50' cols='35' disabled='true' style="font: 12pt Arial"></textarea></div>
+  </body>
+</html>
+
