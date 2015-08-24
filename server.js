@@ -63,6 +63,12 @@ g.io.on('connection', function (soc) {
   // Send any pending notifications.
   push.flush(clientId);
   
+  soc.on('/api/uloc', function (data) {
+    api['/api/uloc'](JSON.parse(data), function () {
+      
+    });
+  });
+  
   soc.on('disconnect', function () {
     // TCP does not guarantee that a connection terminates cleanly. A socket.io client
     // automatically emits heartbeats periodically to affirm the server of its
