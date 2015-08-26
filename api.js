@@ -32,11 +32,32 @@ module.exports = {
     // Do something here.
     return true;
   },
+
+  WS_STAT: 'stat',
+
+  notifyStatus: function (clientId, status) {
+    g.redis.SMEMBERS(_cacheKeySubscribers(clientId), function (err, ret) {
+      if (err != null) {
+
+      } else {
+        for (var i = 0; i < ret.length; i++) {
+          var soc = g.getSocket(ret[i]);
+          if (!g.isEmpty(soc)) {
+            var obj = {
+              'clientId': clientId,
+              'status': status,
+            }
+            soc.emit(that.WS_STAT, JSON.stringify(obj));
+          }
+        }
+      }
+    })
+  },
   
   /** Push notifications **/ 
 
   '/api/push': function (params, fn) {    
-var target = JSON.parse(params['target']);
+    var target = JSON.parse(params['target']);
     if (target instanceof Array) {
       // Push notification to queue and schedule a pop.
       for (var i = 0; i < target.length; i++) {
@@ -50,7 +71,7 @@ var target = JSON.parse(params['target']);
       }
     }
     // TODO: Support * and group notifications.
-    fn(that._success([]));
+    fn(that._success(''));
   },
   
   /** Geotracking **/

@@ -66,7 +66,6 @@ println(data.body);
       var host = '54.191.141.101'; // bento-dev-nodejs01
       var port = 8081;
       //var host = 'localhost';
-      //var port = 8080;
       var url = 'http://' + host + ':' + port;
       
       function uloc(_lat, _lng) {
@@ -186,9 +185,9 @@ println(data.body);
         };
         
         $.ajax({
-          url: 'http://localhost:8080/submitOrder',
+          url: 'http://52.11.208.197:8080/api/submit_order', // bento-dev-rolling01
           data: {
-            order: encodeURIComponent(JSON.stringify(order)),
+            order: JSON.stringify(order),
           },
         }).done(function (res) {
           if (res == 'OK') {

@@ -74,6 +74,8 @@ g.io.on('connection', function (soc) {
     // automatically emits heartbeats periodically to affirm the server of its
     // connection status.
     console.log('io: Client ' + clientId + ' has disconnected.');
+    // Notify all subscribers that a user has disconnected
+    g.api.notifyStatus(clientId, 'DISCONNECTED');
     delete g.sockets[clientId];
   });
 });
