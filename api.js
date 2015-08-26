@@ -35,8 +35,8 @@ module.exports = {
   
   /** Push notifications **/ 
 
-  '/api/push': function (params, fn) {
-    var target = JSON.parse(params['target']);
+  '/api/push': function (params, fn) {    
+var target = JSON.parse(params['target']);
     if (target instanceof Array) {
       // Push notification to queue and schedule a pop.
       for (var i = 0; i < target.length; i++) {
@@ -46,7 +46,7 @@ module.exports = {
           'subject': params['subject'],
           'body'   : params['body'],
         };
-        push.queue(target[i]+'', p);
+        push.queue(target[i]+'', JSON.stringify(p));
       }
     }
     // TODO: Support * and group notifications.

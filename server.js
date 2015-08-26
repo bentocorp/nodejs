@@ -27,8 +27,8 @@ g.redis = require('redis').createClient(conf.redis.port, conf.redis.host, { });
 console.log('Connected.');
 
 /** HTTP **/
-g.server = http.createServer(function (req, res) {
-  // Handle normal HTTP requests in here.
+g.server = http.createServer(function (req, res) {  
+// Handle normal HTTP requests in here.
   var urlParts = url.parse(req.url, true);
   var fn = api[urlParts.pathname];
   if (g.isset(fn) && api.isValid(req)) {
