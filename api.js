@@ -36,7 +36,7 @@ module.exports = {
   WS_STAT: 'stat',
 
   notifyStatus: function (clientId, status) {
-    g.redis.SMEMBERS(_cacheKeySubscribers(clientId), function (err, ret) {
+    g.redis.SMEMBERS(that._cacheKeySubscribers(clientId), function (err, ret) {
       if (err != null) {
 
       } else {

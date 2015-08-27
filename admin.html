@@ -6,6 +6,8 @@
     <script src='./socket.io/node_modules/socket.io-client/socket.io.js'></script>
     <script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'></script>
     <script src="https://api.mapbox.com/mapbox.js/v2.2.1/mapbox.js"></script>
+<script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-label/v0.2.1/leaflet.label.js'></script>
+<link href='https://api.mapbox.com/mapbox.js/plugins/leaflet-label/v0.2.1/leaflet.label.css' rel='stylesheet' />
     <link href="https://api.mapbox.com/mapbox.js/v2.2.1/mapbox.css" rel="stylesheet" />
 <style>
   body { margin:0; padding:0; }
@@ -46,7 +48,7 @@
         console.log("Received " + msg);
         var push = JSON.parse(msg);
         if (push.subject == 'CLIENT_ONLINE') {
-          var clientId = push.msg;
+          var clientId = push.body;
           println('Tracking client ' + clientId);
           $.getJSON(url + '/api/track', {
             uid: 'admin01',
@@ -58,6 +60,9 @@
               println('Failed.');
             }
           });
+        } else if (push.subject == 'CLIENT_OFFLINE') {
+           println(push.body + ' is now offline');
+           map.removeLayer(markers[push.body]);
         }
       })
 
@@ -69,11 +74,11 @@
         if (markers[clientId] == null) {
           markers[clientId] = L.marker(p, {
             icon: L.mapbox.marker.icon({
-              'marker-symbol': clientId,
+              'marker-symbol': 'car',
               'marker-size': 'large',
               'marker-color': randColor()
             })
-          });
+          }).bindLabel(clientId);
           markers[clientId].addTo(map);
         } else {
         //  console.log('here');

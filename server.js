@@ -64,6 +64,7 @@ g.io.on('connection', function (soc) {
   push.flush(clientId);
   
   soc.on('/api/uloc', function (data) {
+   console.log(JSON.stringify(data));
     api['/api/uloc'](JSON.parse(data), function () {
       
     });
@@ -75,7 +76,7 @@ g.io.on('connection', function (soc) {
     // connection status.
     console.log('io: Client ' + clientId + ' has disconnected.');
     // Notify all subscribers that a user has disconnected
-    g.api.notifyStatus(clientId, 'DISCONNECTED');
+    api.notifyStatus(clientId, 'DISCONNECTED');
     delete g.sockets[clientId];
   });
 });
