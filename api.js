@@ -2,12 +2,19 @@
  * @author
  * @copyright
  */
-var g = require('./global.js'),
+var g    = require('./global.js'),
     push = require('./push.js'),
-    url = require('url');
+    url  = require('url'),
+    bcrypt = require('bcrypt');
 var that;
 module.exports = {
 
+  /**
+   * API response object.
+   * @param code (number) 0 - success, otherwise error
+   *        msg  (string) Empty if success, otherwise an error message
+   *        ret  (?)      The return value (can be a primitive or an object)
+   */
   _res: function (code, msg, ret) {
     return {
       'code': code, 'msg': msg, 'ret': ret,
@@ -26,23 +33,23 @@ module.exports = {
     //'/api/push': [],
   },
   
-  isValid: function (req) {
-    //var urlParts = url.parse(req.url, true);
-    //var filters = that._requestFilters[urlParts.pathname];
+  is_valid: function (req) {
+    var urlParts = url.parse(req.url, true);
+    var filters = that._requestFilters[urlParts.pathname];
     // Do something here.
     return true;
   },
 
   WS_STAT: 'stat',
 
-  notifyStatus: function (clientId, status) {
+  notify_status: function (clientId, status) {
     g.redis.SMEMBERS(that._cacheKeySubscribers(clientId), function (err, ret) {
-      if (err != null) {
-
+      if (err) {
+        console.log('Error: notify_status - ' + err);
       } else {
         for (var i = 0; i < ret.length; i++) {
           var soc = g.getSocket(ret[i]);
-          if (!g.isEmpty(soc)) {
+          if (!g.isEmpty(soc) & soc.connected) {
             var obj = {
               'clientId': clientId,
               'status': status,
@@ -51,8 +58,57 @@ module.exports = {
           }
         }
       }
-    })
+    });
   },
+
+    // TODO: Make stronger
+    gen_token: function () {
+        var token = '';
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        for (var i = 0; i < 64; i++) {
+            token += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return token;
+    },
+
+    // TODO: Implement time-constant token validation.
+    verify_token: function (uid, token) {
+        // XXX: Need to check expiryTs
+        return g['tokens'][uid]['token'] === token;
+    },
+
+    /**
+     * @return
+     */
+    '/api/authenticate': function (params, fn) {
+        // TODO: protect against sql injection attacks.
+        var sql = "SELECT api_password FROM api_User WHERE email='" + params['username'] + "'";
+        console.log('Retrieving authentication information for ' + params['uid']);
+        g.mysql.exec(sql, function (res) {
+            if (res == null) {
+                fn(that._error(1, 'Database error during authentication.'));
+            } else if (res.length >= 0 && !g.empty(res[0]['api_password'])) {
+                var hash = res[0]['api_password'];
+                // Async compare using bcyrpt
+                bcrypt.compare(params['password'], hash, function (err, res) {
+                    if (err) {
+                        // error with bcrypt
+                        var msg = 'Error with bcrypt - ' + err;
+                        console.log(msg);
+                        fn(that._error(1, msg));
+                    } else if (res) {
+                        // Good - generate API token here
+                        var ret = {
+                            'token': that.gen_token(), 'expiryTs': -1,
+                        };
+                        fn(that._success(ret));
+                    } else {
+                        fn(that._error(401, 'Bad authentication credentials.'));
+                    }
+                });
+            }
+        });
+    },
   
   /** Push notifications **/ 
 

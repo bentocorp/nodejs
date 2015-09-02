@@ -3,6 +3,7 @@
     <script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'></script>
     <script src='./socket.io/node_modules/socket.io-client/socket.io.js'></script>
     <script type='text/javascript'>
+
       // Make sure browser supports WebSocket API. Is this still needed if we
       // include socket.io?
       if ('WebSocket' in window) {
@@ -36,10 +37,22 @@
           // instance is created referencing the same underlying connection so callbacks may be invoked
           // multiple times so be careful.
           // { 'force new connection': true }
-          soc = io.connect(url, { query: "clientId="+id });
+          soc = io.connect(url, { query: "client_id="+id });
           
           soc.on('connect', function () {
             println('Connection established.');
+            println('Authenticating with test username and password.');
+            var data = {
+              api: '/api/authenticate',
+              params: {
+                uid: id,
+                username: 'marc@bentonow.com', password: 'password' }
+                , api_token: '69H_yFabc#',
+            }
+            soc.emit('get', data, function (res) {
+              console.log(res);
+              println('The server responded with: ' + res.msg);
+            });
           });
           
           soc.on('reconnecting', function (n) {
@@ -63,10 +76,10 @@ println(data.body);
  
       }
       
-      var host = '54.191.141.101'; // bento-dev-nodejs01
+      // var host = '54.191.141.101'; // bento-dev-nodejs01
       var port = 8081;
-      //var host = 'localhost';
-      var url = 'http://' + host + ':' + port;
+      var host = 'localhost';
+      var url = 'https://' + host + ':' + port;
       
       function uloc(_lat, _lng) {
         $.getJSON(url + '/api/uloc', {

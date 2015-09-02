@@ -1,3 +1,6 @@
+
+// XXX: Add in expiration date!
+
 /**
  * @author
  * @copyright
@@ -14,7 +17,7 @@ module.exports = {
     // still open since client may have disconnected while fetching data from
     // cache server (redis).
     var soc = g.getSocket(uid);
-    if (!g.isEmpty(soc) && soc.connected) {
+    if (!g.empty(soc) && soc.connected) {
       soc.emit(this.WS_PUSH, msg);
       return true;
     }
@@ -29,7 +32,7 @@ module.exports = {
     g['redis'].LRANGE(that._cacheKey(uid), 0, 0, function (err, ret) {
       if (err != null) {
         console.log('redis: ' + err);
-      } else if (!g.isEmpty(ret) && that._deliver(uid, ret[0])) {
+      } else if (!g.empty(ret) && that._deliver(uid, ret[0])) {
         g['redis'].LPOP(that._cacheKey(uid), function (err, ret) {
           if (err != null) {
             console.log('redis: ' + err);

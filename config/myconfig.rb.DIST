@@ -1,0 +1,5 @@
+set :ssh_options, {
+  user: 'your_username',
+}
+
+set :tmp_dir, '/home/your_username/tmp'
