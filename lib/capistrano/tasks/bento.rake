@@ -59,8 +59,8 @@ task :start_server do
 		npm_install("fs")
 		npm_install("mysql")
 		npm_install("bcrypt")
-		symlink("#{fetch(:to_deploy)}/shared/node", "current/node")
-		symlink("#{fetch(:to_deploy)}/shared/node_modules", "current/node_modules")
-		execute "#{fetch(:to_deploy)}/current/node server.js -e #{fetch(:stage)}"
+		symlink("#{fetch(:deploy_to)}/shared/node", "current/node")
+		symlink("#{fetch(:deploy_to)}/shared/node_modules", "current/node_modules")
+		execute "#{fetch(:deploy_to)}/current/node server.js -e #{fetch(:stage)}"
 	end
 end
