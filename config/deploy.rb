@@ -36,13 +36,7 @@ set :deploy_to, '/var/www/nodejs'
 # set :keep_releases, 5
 
 namespace :deploy do
-	after :finished do
-    on roles(:app) do
-      execute 'pwd'
-    end
-		#if test("[ -f /opt/node/bin/node -a -f /opt/node/bin/npm ]")
-		#end
-	end
+	after :finished, :start_server
 
   after :restart, :clear_cache do
     on roles(:web), in: :groups, limit: 3, wait: 10 do
@@ -52,5 +46,4 @@ namespace :deploy do
       # end
     end
   end
-
 end
