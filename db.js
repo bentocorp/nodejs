@@ -37,7 +37,7 @@ module.exports = function (e) {
 		console.log('Instantiating database connection pool as ' + _conf['username'] + '@' + _conf['host'] + ':' + _conf['port']);
 
 		this.exec = function (sql, callback) {
-			console.log(sql);
+			//console.log(sql);
 			// XXX: https://github.com/felixge/node-mysql/
 			_pool.query(sql, function (err, rows, fields) {
 				if (err) {
@@ -47,6 +47,7 @@ module.exports = function (e) {
 					// rows is an array of objects where each object is a single row and the keys
 					// are the fields
 					// rows = [
+					//console.log(rows);
 					callback(rows);
 				}
 			});

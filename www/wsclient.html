@@ -27,7 +27,7 @@
           case 'c': $('body').css({'background-color': 'green'}); break;
         }
       }
-      
+      var token;
       function connect() {
         // Tries to upgrade http:// to ws:// and falls back on long polling if
         // unsuccessful.
@@ -37,21 +37,30 @@
           // instance is created referencing the same underlying connection so callbacks may be invoked
           // multiple times so be careful.
           // { 'force new connection': true }
-          soc = io.connect(url, { query: "client_id="+id });
+          soc = io.connect(url, { query: "uid="+id });
           
           soc.on('connect', function () {
             println('Connection established.');
-            println('Authenticating with test username and password.');
+            println('Authenticating');
+            
+
             var data = {
               api: '/api/authenticate',
               params: {
-                uid: id,
-                username: 'marc@bentonow.com', password: 'password' }
-                , api_token: '69H_yFabc#',
+                username: 'atlas01',
+                password: 'password'
+              },
             }
+            
+
             soc.emit('get', data, function (res) {
-              console.log(res);
-              println('The server responded with: ' + res.msg);
+              res = JSON.parse(res);
+              if (res.code == 0) {
+                println('Successfully authenticated');
+                token = res.ret['token'];
+              } else {
+                println(res['msg']);
+              }
             });
           });
           
@@ -61,14 +70,27 @@
            
           soc.on('reconnect', function () {
             println('Successfully reconnected.')
-          })
+          });
+
+          soc.on('disconnect', function () {
+            println('I got disconnected!');
+          });
           
           soc.on('push', function (msg) {
 var data = JSON.parse(msg);            
 println(data.body);
           })
+
+          soc.on('stat', function (msg) {
+
+            //println(msg);
+            var res = JSON.parse(msg);
+            println(res.clientId+':'+res.status);
+          
+          });
           
           soc.on('loc', function (e) {
+            e = JSON.parse(e);
             var msg = "Location update for client " + e.clientId + ": (" + e.lat + ", " + e.lng + ")";
             println(msg);
           });
@@ -82,42 +104,52 @@ println(data.body);
       var url = 'https://' + host + ':' + port;
       
       function uloc(_lat, _lng) {
+        /*
+        var data = {
+          api: '/api/uloc',
+        };*/
         $.getJSON(url + '/api/uloc', {
           uid: $('#client-id').val(),
           lng: _lng,
           lat: _lat,
+          'token': token,
         }).done(function (ret) {
           if (ret.code == 0) {
             println('Successfully updated loc=' + _lat + ', ' + _lng);
           } else {
-            println('Failed.');
+            println(ret.msg);
           }
         });
       }
       
       function track(_clientId) {
-        println('Tracking ' + _clientId);
         $.getJSON(url + '/api/track', {
           uid: $('#client-id').val(),
-          clientId: _clientId,
-        }).done(function (ret) {
-          if (ret.code == 0) {
-            //println('Tracking ' + _clientId);
+          client_id: _clientId,
+          'token': token,
+        }).done(function (res) {
+          if (res.code == 0) {
+            var status = res.ret.connected ? 'online' : 'offline';
+            println('Tracking ' + _clientId + '('+status+')');
           } else {
-            println('Failed.');
+            println(res.msg);
           }
         });
       }
       
       function push(_target, _msg) {
+        println('here');
         $.getJSON(url + '/api/push', {
+          uid: $('#client-id').val(),
           target: JSON.stringify([_target]),
-          msg: _msg,
+          subject: '',
+          body: _msg,
+          'token': token,
         }).done(function (ret) {
           if (ret.code == 0) {
             println('Sent to ' + _target + ': ' + _msg);
           } else {
-            println('Failed');
+            println(ret.msg);
           }
         }); 
       }
@@ -295,7 +327,7 @@ println(data.body);
 </div>
     
 
-<div><textarea id="client" rows='50' cols='35' disabled='true' style="font: 12pt Arial"></textarea></div>
+<div><textarea id="client" rows='50' cols='50' disabled='true' style="font: 9pt Arial"></textarea></div>
   </body>
 </html>
 

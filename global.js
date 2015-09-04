@@ -97,7 +97,7 @@ module.exports = {
     /**
      * @return
      */
-    get_socket: function (uid) {
+    getSocket: function (uid) {
         var sid = that.sockets[String(uid)];
         if (!that.empty(sid)) {
             return that.io.sockets.connected[sid];

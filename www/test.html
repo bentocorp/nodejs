@@ -1,9 +1,10 @@
 <html>
-<!--script src="./node_modules/bcrypt/bcrypt.js"/-->
+<script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'></script>
 <script type="text/javascript">
-  var fruit = new (function (name) {
-    this.print = function () { console.log(name); };
-  })('apple');
-  fruit.print();
+	$.getJSON('https://localhost:8081/api/gret', {
+        	//uid: 'marc',
+        }).done(function (res) {
+        	console.log(res);
+        });
 </script>
 </html>
