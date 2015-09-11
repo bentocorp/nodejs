@@ -206,7 +206,7 @@ module.exports = {
      * @param lng Longitude.
      * @param lat Latitude.
      */
-    '/api/uloc': function (params, fn) {
+    '/api/uloc': function (params, fn) {// check to see if the user even supplied a callback function!
         var uid = params['uid'],
             lat = params['lat'],
             lng = params['lng'],
@@ -239,19 +239,18 @@ module.exports = {
 
     '/api/track': function (params, fn) {
         var uid = params['uid'],
-            clientId = params['client_id'];
+            clientId = params['client_id']; // clientId not client_id (again must standardize!)
         g['redis'].SADD(that._cacheKeySubscribers(clientId), uid, function (err, ret) {
             if (err != null) {
                 fn(that._error(1, err));
             } else {
                 var cSoc = g.getSocket(clientId);
                 fn(that._success({
-                    connected: g.empty(cSoc) ? false : cSoc.connected,
+                    'clientId': clientId, connected: g.empty(cSoc) ? false : cSoc.connected,
                 }));
                 // Then if there's any location data available, immediately send it.
                 // XXX: Do not send stale location data. Maybe only send if client is online?
                 if (g.empty(cSoc) || !cSoc.connected) {
-                    console.log(cSoc.connected);
                     return;
                 }
                 g['redis'].GET(that._cacheKeyLatLng(clientId), function (err, ret) {

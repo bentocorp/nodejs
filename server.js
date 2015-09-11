@@ -1,7 +1,8 @@
 var g    = require('./global.js'),
     api  = require('./api.js'),
     push = require('./push.js'),
-    https= require('https'),   
+    https= require('https'), 
+    http = require('http'),  
     url  = require('url'),
     express = require('express'),
     app  = express(),
@@ -49,7 +50,8 @@ var options = {
     cert: fs.readFileSync(conf.server.resources_dir + '/cert.pem').toString(),
 };
 
-g.server = https.createServer(options, function (req, res) {
+g.server = http.createServer(function (req, res) {
+//g.server = https.createServer(options, function (req, res) {
     // Ignore SOP with Access-Control-Allow-Origin (testing only)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'text/json');
@@ -98,20 +100,26 @@ g.server = https.createServer(options, function (req, res) {
 
 /* WebSocket */
 
-// Attach socket.io to the above HTTP server.
+// Attach socket.io to the above HTTP server
 g.io = require('socket.io')(g.server);
 
-g.io.use(function (soc, next) {
+g.io.of('/').use(function (soc, next) {
     var clientId = soc.handshake.query.uid;
     if (!g.isset(clientId)) {
-        // TODO: Need to investigate this.
-        // calling next(new Error()) does not close the connection; must do it manually =(
-        next(new Error("Missing 'uid' connection parameter"));
-        soc.disconnect();
+        // XXX: Investigate - client will not receive this error message because
+        // of the way socket.io is implemented =(
+        next(new Error('Missing "uid" connection parameter'));
+        console.log('Rejected WebSocket connection due to missing "uid" connection parameter');
+        // pass true to close underlying socket connection
+        soc.disconnect(true);
     }
     var curr = g.getSocket(clientId);
     if (curr != null && curr.connected == true) {
-        next(new Error('There is already a connection opened for client ' + clientId));
+        var msg = 'There is already a connection opened for client ' + clientId;
+        console.log(msg);
+        next(new Error(msg));
+        // XXX: This next(new Error()) thing needs to be more understood!
+        soc.disconnect(true);
     } else {
         soc['clientId'] = clientId;
         soc['authenticated'] = false;
@@ -121,32 +129,31 @@ g.io.use(function (soc, next) {
 
 g.io.on('connection', function (soc) {
   
-    // Handshake must include client identifier.
+    // Socket setup procedure must initialize client identifier
     var clientId = soc['clientId'];
     console.log('Accepted WebSocket connection with ' + clientId);
 
-    // WebSocket equivalent of GET requests.
-    // data = {
-    //   api: '/api/push',
-    //   params: {
-    //    
-    //   },
-    //   token: Abc0yprsT,
-    // }
     soc.on('get', function (data, callback) {
-        if (g.empty(data['api']) || !g.isset(data['params']) || data['params'] == null) {
+        if (g.empty(data)) {
+            console.log('Error - received empty data on get channel');
             callback(api.error('malformed_request'));
             return;
         }
-        // Add client identifier to params object
-        data['params']['uid'] = clientId;
-        // The API function to invoke.
-        var fn = data['api'];
+        var urlParts = decodeURI(data).split('?');
+        // fn - the API function to invoke
+        var fn = urlParts[0], params = { uid: clientId, };
+        if (g.isset(urlParts[1])) {
+            var query = urlParts[1].split('&');
+            for (var i = 0; i < query.length; i++) {
+                var kv = query[i].split('=');
+                params[kv[0]] = kv[1];
+            }
+        }
         if (!g.isset(api[fn])) {
             callback(api.error('not_found'));
         } else if (fn == '/api/authenticate') {
             // Must do extra work for WebSocket authentication.
-            api['/api/authenticate'](data['params'], function (str) {
+            api['/api/authenticate'](params, function (str) {
                 var res = JSON.parse(str);
                 // If successful, mark socket as authenticated then associate client with socket identifier.
                 if (res['code'] == 0 && !g.empty(res['ret'])) {
@@ -161,10 +168,10 @@ g.io.on('connection', function (soc) {
                 }
                 callback(str);
             });
-        } else if (g.isset(data['token']) && api.verify_token(clientId, data['token'])) { // What about is_valid()?
+        } else if (g.isset(params['token']) && api.verify_token(clientId, params['token'])) { // What about is_valid()?
             // Otherwise, token must be valid in order to invoke API function.
             try {
-                api[fn].apply(api, [data['params'], callback]);
+                api[fn].apply(api, [params, callback]);
             } catch (err) {
                 console.log(err);
                 callback(api.error('generic'));
@@ -181,9 +188,9 @@ g.io.on('connection', function (soc) {
             // This is the only time the server calls disconnect. The behavior is different such that
             // if the server shuts down, while the connection is lost, resuming does not force the 
             // user to re-authenticate.
-            soc.disconnect();
+            soc.disconnect(true);
         }
-    }, 60000);
+    }, 5000);
   
     soc.on('disconnect', function () {
         // TCP does not guarantee that a connection terminates cleanly. A socket.io client
