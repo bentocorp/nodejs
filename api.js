@@ -306,6 +306,7 @@ module.exports = {
                         for (var i = 0; i < ret.length; i++) {
                             var socs = g.getSockets(ret[i]);
                             for (var j = 0; j < socs.length; j++) {
+                                var soc = socs[j];
                                 if (soc.connected) {
                                     obj.clientId = uid;
                                     soc.emit('loc', JSON.stringify(obj));
