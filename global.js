@@ -17,10 +17,10 @@ module.exports = {
 
     mysql : null,
 
-    // Map of user identifiers (uid) to WebSocket identifiers (sid)
-    // e.g. sockets['500'] = '1a92be7';
+    // Map of user identifiers (uid) to an array of associated WebSocket identifiers (sid)
+    // e.g. sockets['c-500'] = ['1a92be7', '2ez7y05'];
     sockets: {
-
+        // a - admin, d - driver, c - customer
     },
 
     // Access tokens; automatically generated after successful authentication
@@ -94,15 +94,82 @@ module.exports = {
         return obj;
     },
   
+    setSocket: function (clientId, sid) {
+        if (!self.isset(self.sockets[clientId])) {
+            self.sockets[clientId] = [];
+        }
+        self.sockets[clientId].push(sid);
+    },
+
     /**
      * @return
      */
-    getSocket: function (uid) {
-        var sid = that.sockets[String(uid)];
-        if (!that.empty(sid)) {
-            return that.io.sockets.connected[sid];
+    getSockets: function (clientId) {
+        clientId = String(clientId);
+        var sids = self.sockets[clientId]; // c-3007: [1234, 9876, 8060]
+        if (self.isset(sids) && sids.length > 0) {
+            var socs = [];
+            for (var i = 0; i < sids.length; i++) {
+                socs.push(self.io.sockets.connected[sids[i]]);
+            }
+            return socs;
+        } else {
+            return [];
         }
-        return null;
-    }
+    },
+
+    get: function (array, key, dyfault) {
+        if (self.isset(array[key])) {
+            return array[key];
+        } else {
+            return dyfault;
+        }
+    },
+
+    /* id gen */
+    idgen: new (function () {
+        var _ids = {
+            // 'socket': { cnt: 8, available: [0, 4, 5] }
+        };
+        this.next = function (key) {
+            key = String(key);
+            if (!self.isset(_ids[key])) {
+                _ids[key] = {
+                    cnt: -1, available: [],
+                };
+            }
+            if (_ids[key].available.length == 0) {
+                return ++_ids[key].cnt;
+            } else {
+                return _ids[key].available.shift();
+            }
+        };
+        this.free = function (id) {
+            var parts = String(id).split('-'); // socket-0
+            if (parts.length != 2) {
+                console.log('Error - malformed id ' + id);
+            } else if (!self.isset(_ids[parts[0]])) {
+                console.log('Error - Trying to free ' + id + ' but key not found');
+            } else if (_ids[parts[0]].available.indexOf(parts[1]) >= 0) {
+                console.log('Error - id ' + id + ' has already been released');
+            } else {
+                _ids[parts[0]].available.push(parts[1]);
+            }
+        };
+    })(),
 };
+
+var self = module.exports;
+
 that = module.exports;
+
+// printf-ish function (from Stack Overflow)
+// http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function (match, number) {
+            return typeof args[number] != 'undefined' ? args[number] : match;
+        });
+    };
+}

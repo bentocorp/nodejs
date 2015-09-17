@@ -6,6 +6,7 @@ var g    = require('./global.js'),
     push = require('./push.js'),
     url  = require('url'),
     bcrypt = require('bcrypt');
+var self;
 var that;
 module.exports = {
 
@@ -67,76 +68,109 @@ module.exports = {
                 console.log('Error: notify_status - ' + err);
             } else {
                 for (var i = 0; i < ret.length; i++) {
-                    var soc = g.getSocket(ret[i]);
-                    if (!g.empty(soc) && soc.connected) {
-                        var data = {
-                            'clientId': clientId,
-                            'status': status,
+                    var socs = g.getSockets(ret[i]);
+                    for (var j = 0; j < socs.length; j++) {
+                        var soc = socs[j];
+                        if (soc.connected) {
+                            var data = {
+                                clientId: clientId, status: status,
+                            };
+                            soc.emit(that.WS_STAT, JSON.stringify(data));
                         }
-                        soc.emit(that.WS_STAT, JSON.stringify(data));
                     }
                 }
             }
         });
     },
 
-    // TODO: Make stronger
-    gen_token: function (uid) {
-        //var str = uid + new Date().getTime() + Math.floor(Math.random() * 8);
+    gen_token: function (clientId) {
+        //var str = clientId + new Date().getTime() + Math.floor(Math.random() * 8);
         //return bcrypt.hashSync(str, 1);
+        
         var token = '';
         var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         for (var i = 0; i < 64; i++) {
             token += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return token;
+        
     },
 
     // TODO: Implement time-constant token validation.
-    verify_token: function (uid, token) {
-        if (!g.isset(g['tokens'][uid])) {
+    verify_token: function (clientId, token) {
+        if (!g.isset(g['tokens'][clientId])) {
             // Check if the token is stored in redis / mysql
             return false;
         }
         // XXX: Need to check expiryTs
-        return g['tokens'][uid]['token'] === token;
+        return g['tokens'][clientId]['token'] == token;
     },
 
     /**
      * @return
      */
     '/api/authenticate': function (params, fn) {
-        //fn(that._success());
-        if (!g.isset(params['username']) || !g.isset(params['password'])) {
-            fn(that._error(1, 'Missing username or password'));
+        var username = params['username'],
+            password = params['password'],
+            type     = params['type'];
+        if (!g.isset(username) || !g.isset(password) || !g.isset(type)) {
+            fn(self._error(1, 'Missing username, password, or login type'));
             return;
         }
-        // TODO: protect against sql injection attacks.
-        var sql = "SELECT password FROM User WHERE email='" + params['username'] + "'";
-        console.log('Retrieving authentication information for ' + params['uid']);
-        g.mysql.exec(sql, function (res) {
+        // node-mysql library automatically performs escaping to prevent sql injections
+        var select, update;
+        if (type == 'c') {
+            select = "SELECT pk_User AS pk, password FROM User WHERE email='{0}'";
+            update = "UPDATE User SET api_token='{0}' WHERE pk_User={1}";
+        } else if (type == 'd') {
+            // drivers
+            select = "SELECT pk_Driver AS pk, password FROM Driver WHERE email='{0}'";
+            update = "UPDATE Driver SET api_token='{0}' WHERE pk_Driver={1}";
+        } else if (type == 'a') { // admin
+            select = "SELECT pk_admin_User AS pk, password FROM admin_User WHERE username='{0}'";
+            update = "UPDATE admin_User SET api_token='{0}' WHERE pk_admin_User={1}";
+        } else if (type == 'b') { // back-end
+            select = "SELECT pk_api_User AS pk, api_password AS password FROM api_User WHERE api_username='{0}'";
+            update = "UPDATE api_User SET api_token='{0}' WHERE pk_api_User={1}";
+        } else {
+            fn(self._error(1, 'Login type ' + type + ' not recognized'));
+            return;
+        }
+        console.log('Fetching authentication credentials');
+        g.mysql.exec(select.format(username), function (res) {
             if (res == null) {
-                fn(that._error(1, 'Database error during authentication'));
-            } else if (res.length > 0 && !g.empty(res[0]['password'])) {
+                fn(self._error(1, 'Database error during authentication'));
+            } else if (res.length > 0 && !g.empty(res[0]['pk']) && !g.empty(res[0]['password'])) {
+                var pk = res[0]['pk'];
+                var clientId = '{0}{1}'.format(type, pk); // c500
                 var hash = res[0]['password'];
                 // Async compare using bcyrpt
-                bcrypt.compare(params['password'], hash, function (err, res) {
+                bcrypt.compare(password, hash, function (err, res) {
                     if (err) {
                         // error with bcrypt
                         var msg = 'Error with bcrypt - ' + err;
                         console.log(msg);
-                        fn(that._error(1, msg));
+                        fn(self._error(1, msg));
                     } else if (res) {
-                        // Good - generate API token here
+                        // Good - check if an API token has already been generated for another user instance
+                        if (g.tokens[clientId] != null) {
+                            fn(self._success({
+                                uid: clientId, token: g.tokens[clientId], expiryTs: -1  
+                            }));
+                            return;
+                        }
+                        // If none exist, generate a new one
+                        var token = self.gen_token(clientId);
                         var ret = {
-                            'token': that.gen_token(params['uid']), 'expiryTs': -1,
+                            uid: clientId, token: token, expiryTs: -1,
                         };
                         // Update database
-                        g.mysql.exec("UPDATE User SET api_token='" + ret['token'] + "'WHERE email='" + params['username'] + "'", function (res) {
+                        g.mysql.exec(update.format(token, pk), function (res) {
                             if (res == null) {
                                 fn(that._error(1, 'Error writing token to database'));
                             } else {
-                                g['tokens'][params['uid']] = ret;
+                                console.log('Assigned {0} access token {1}'.format(clientId, token));
+                                g.tokens[clientId] = ret;
                                 fn(that._success(ret));
                             }
                         });
@@ -146,7 +180,7 @@ module.exports = {
                 });
             } else {
                 // This makes the server vulnerable to scraping attacks (testing only)
-                fn(that._error(1, 'database query came back empty; user not found'));
+                fn(that._error(1, 'database query came back empty; user ' + username + ' not found'));
             }
         });
     },
@@ -156,29 +190,74 @@ module.exports = {
         fn(that._success('Hello, ' + clientId + '!'));
     },
   
-    /** Push notifications **/ 
+    /** Push notifications **/
+    _cacheKeyGroup: function (name) {
+        return 'group_' + name;
+    },
 
-    '/api/push': function (params, fn) {
-        if (!g.isset(params['target']) || !g.isset(params['subject']) || !g.isset(params['body'])) {
-            fn(that._error(1, 'Missing target, subject, or body paramter'));
+    // XXX: Guard against cross-user modification
+    '/api/modgrp': function (params, fn) {
+        var cmd = params['cmd'], uid = params['uid'], group = params['group'];
+        if (!g.isset(cmd) || !g.isset(uid) || !g.isset(group)) {
+            fn(self._error(1, 'Error - cmd, uid, or group parameter not found'));
+        } else {
+            switch (cmd) {
+                case 'a':
+                    g['redis'].SADD(self._cacheKeyGroup(group), uid, function (err, ret) {
+                        if (err != null) {
+                            fn(self._error(1, err));
+                        } else {
+                            fn(self._success(null));    
+                        }
+                    });
+                case 'd':
+                case 'D':
+                    // Delete a group
+                    break;
+                default:
+                    fn(self._error(1, 'Error - command ' + cmd + ' not supported'));
+            }
         }
-        var target = JSON.parse(params['target']);
-        if (target instanceof Array) {
-            // Push notification to queue and schedule a pop.
-            for (var i = 0; i < target.length; i++) {
-            var p = {
-                'origin' : params['uid'],
-                'target' : target[i],
-                'subject': params['subject'],
-                'body'   : params['body'],
-            };
-            push.queue(target[i]+'', JSON.stringify(p));
+    },
+
+    '/api/push': function (params, fn) {console.log('here');
+        var rid  = g.get(params, 'rid', null);
+            from = params.from,
+            to   = params.to,
+            subject = params.subject,
+            body = params.body;
+        if (!g.isset(to) || !g.isset(subject) || !g.isset(body)) {
+            fn(self._error(1, 'Missing to, subject, or body parameter(s)'));
+            return;
         }
-    }
-    // TODO: Support * and group notifications.
-    fn(that._success(''));
-  },
-  
+        var p = {
+            rid: rid, from: from, to: to, subject: subject, body: body
+        };
+        var recipient = JSON.parse(to);
+        if (recipient instanceof Array) {
+            // Enqueue push notification then schedule a pop
+            for (var i = 0; i < recipient.length; i++) {
+                p.to = recipient[i];
+                console.log("pushing msg to " + p.to);
+                push.queue(String(recipient[i]), JSON.stringify(p));
+            }
+            fn(self._success('ok'));
+        } else if ('*' === recipient) {
+            fn(self._error(1, 'Error - global pushes currently not supported'));
+        } else {
+            g['redis'].SMEMBERS(self._cacheKeyGroup(recipient), function (err, ret) {
+                if (err != null) {
+                    console.log('Error getting members for ' + that._cacheKeyGroup(recipient) + ' - ' + err);
+                } else {
+                    for (var i = 0; i < ret.length; i++) {
+                        push.queue(String(ret[i]), JSON.stringify(p));
+                    }
+                    fn(that._success('ok'));
+                }
+            }); // g['redis'].SMEMBERS
+        }
+    },
+
     /** Geotracking **/
   
     WS_LOC: 'loc',
@@ -225,10 +304,12 @@ module.exports = {
                         console.log('Error getting subscribers for ' + that._cacheKeySubscribers(uid) + ' - ' + err);
                     } else {
                         for (var i = 0; i < ret.length; i++) {
-                            var soc = g.getSocket(ret[i]);
-                            if (!g.empty(soc)) {
-                                obj.clientId = uid;
-                                soc.emit('loc', JSON.stringify(obj));
+                            var socs = g.getSockets(ret[i]);
+                            for (var j = 0; j < socs.length; j++) {
+                                if (soc.connected) {
+                                    obj.clientId = uid;
+                                    soc.emit('loc', JSON.stringify(obj));
+                                }
                             }
                         }
                     }
@@ -244,31 +325,33 @@ module.exports = {
             if (err != null) {
                 fn(that._error(1, err));
             } else {
-                var cSoc = g.getSocket(clientId);
+                var cSocs = g.getSockets(clientId);
                 fn(that._success({
-                    'clientId': clientId, connected: g.empty(cSoc) ? false : cSoc.connected,
+                    'clientId': clientId, connected: (cSocs.length > 0),
                 }));
                 // Then if there's any location data available, immediately send it.
                 // XXX: Do not send stale location data. Maybe only send if client is online?
-                if (g.empty(cSoc) || !cSoc.connected) {
+                if (g.empty(cSocs)) {
                     return;
                 }
                 g['redis'].GET(that._cacheKeyLatLng(clientId), function (err, ret) {
                     if (err != null) {
                         console.log('Error fetching ' + that._cacheKeyLatLng(clientId) + ' - ' + err);
                     } else if (!g.empty(ret)) {
-                        var soc = g.getSocket(uid);
-                        if (g.isset(soc)) {
-                            var obj = JSON.parse(ret);
-                            obj.clientId = clientId;
-                            soc.emit('loc', JSON.stringify(obj));
+                        var socs = g.getSockets(uid);
+                        for (var i = 0; i < socs.length; i++) {
+                            var soc = socs[i];
+                            if (soc.connected) {
+                                var obj = JSON.parse(ret);
+                                obj.clientId = clientId;
+                                soc.emit('loc', JSON.stringify(obj));
+                            }
                         }
                     }
                 }); // g['redis'].GET
             }
         }); // g['redis'].SADD
     },
-
-
 };
 that = module.exports;
+self = module.exports;
