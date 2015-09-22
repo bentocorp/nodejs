@@ -59,6 +59,7 @@ task :start_server do
 		npm_install("fs")
 		npm_install("mysql")
 		npm_install("bcrypt")
+		npm_install("winston")
 		symlink("#{fetch(:deploy_to)}/shared/node", "current/node")
 		symlink("#{fetch(:deploy_to)}/shared/node_modules", "current/node_modules")
 		upload! "private-NO-COMMIT.js", "#{fetch(:deploy_to)}/current", :via => :scp
