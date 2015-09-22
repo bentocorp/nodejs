@@ -2,11 +2,77 @@
  * @author
  * @copyright
  */
-// Use "that" instead of "this" because context is variable based on how functions
-// are invoked.
-var that;
+var winston = require('winston');
+var format = function (options) {
+    //console.log(options);
+    var level= "",
+        padding = 5 - options.level,
+        msg  = "";
+    for (; padding > 0; padding--) {
+        level += ' ';
+    }
+    if (options.meta.stack) {
+        msg = options.meta.stack.join("\n");
+    } else {
+        msg = options.message;
+    }
+    level += options.level.toUpperCase();
+    return (new Date).toISOString() + ' ' + level + ' ' + process.pid + ' - ' + msg;
+}
+var logger = new winston.Logger({
+    transports: [
+        new winston.transports.Console({
+            name: 'console',
+            level: 'debug',
+            formatter: function (options) { if (options.meta.stack) return options.meta.stack.join('\n'); else return options.message; },
+            json: false,
+            handleExceptions: true,
+        }),
+        new winston.transports.File({
+            name: 'debug-log',
+            filename: 'debug.log',
+            level: 'debug',
+            formatter: format,
+            json: false,
+        }),
+        new winston.transports.File({
+            name: 'error-log',
+            filename: 'error.log',
+            level: 'error',
+            formatter: format,
+            json: false,
+            handleExceptions: true,
+            colorize: true,
+        }),
+    ]
+});
+
+// printf-ish function (from Stack Overflow)
+// http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function (match, number) {
+            return typeof args[number] != 'undefined' ? args[number] : match;
+        });
+    };
+}
+
+// Use "self" instead of "this" because context is variable based on how functions
+// are invoked
+var self;
+
 module.exports = {
-    
+
+    debug: function (msg) {
+        logger.debug(msg);
+    },
+
+    error: function (err) {
+        var msg = self.getOrElse(err.stack, err);
+        logger.error(msg);
+    },
+
     /* Global properties */
 
     server: null, // http.Server
@@ -29,26 +95,20 @@ module.exports = {
 
     },
 
+    groups: {
+
+    },
+
     /* Helper functions */
 
-    /**
-     * This is not a "toString" method!
-     * @return
-     */
     str: function (obj) {
         return JSON.stringify(obj);
     },
 
-    /**
-     * @return
-     */
     isset: function (obj) {
-        return typeof obj !== 'undefined';
+        return obj != undefined;
     },
 
-    /**
-    * @return
-    */
     empty: function (obj) {
         switch (typeof obj) {
             case 'undefined': return true;
@@ -83,7 +143,7 @@ module.exports = {
      */
     ns: function (str) {
         var parts = str.split('.');
-        var obj = that;
+        var obj = self;
         for (var i = 0; i < parts.length; i++) {
             var name = parts[i];
             if (!isset(obj[name])) {
@@ -94,82 +154,77 @@ module.exports = {
         return obj;
     },
   
-    setSocket: function (clientId, sid) {
+    setSocketId: function (clientId, sid) {
         if (!self.isset(self.sockets[clientId])) {
             self.sockets[clientId] = [];
         }
         self.sockets[clientId].push(sid);
     },
 
-    /**
-     * @return
-     */
     getSockets: function (clientId) {
-        clientId = String(clientId);
         var sids = self.sockets[clientId]; // c-3007: [1234, 9876, 8060]
-        if (self.isset(sids) && sids.length > 0) {
-            var socs = [];
+        var socs = [];
+        if (self.isset(sids)) {
             for (var i = 0; i < sids.length; i++) {
-                socs.push(self.io.sockets.connected[sids[i]]);
+                var sid = sids[i],
+                    soc = self.io.sockets.connected[sid];
+                if (!self.isset(soc)) {
+                    self.error('Error - sid {0} does not exist for {1}'.format(sid, clientId));
+                } else {
+                    socs.push(soc);
+                }
             }
-            return socs;
-        } else {
-            return [];
         }
+        return socs;
     },
 
-    get: function (array, key, dyfault) {
-        if (self.isset(array[key])) {
-            return array[key];
+    getOrElse: function (obj, dyfault) {
+        if (self.isset(obj)) {
+            return obj;
         } else {
             return dyfault;
         }
     },
 
-    /* id gen */
     idgen: new (function () {
-        var _ids = {
-            // 'socket': { cnt: 8, available: [0, 4, 5] }
+        var ids = {
+            // 'some-key': { cnt: 8, available: [0, 4, 5] }
         };
         this.next = function (key) {
             key = String(key);
-            if (!self.isset(_ids[key])) {
-                _ids[key] = {
+            if (!self.isset(ids[key])) {
+                ids[key] = {
                     cnt: -1, available: [],
                 };
             }
-            if (_ids[key].available.length == 0) {
-                return ++_ids[key].cnt;
+            var cnt;
+            if (ids[key].available.length <= 0) {
+                cnt = ++(ids[key].cnt);
             } else {
-                return _ids[key].available.shift();
+                cnt = ids[key].available.shift();
             }
+            return '{0}-{1}'.format(key, cnt);
         };
+        // Free an id so that it can be reused
         this.free = function (id) {
-            var parts = String(id).split('-'); // socket-0
-            if (parts.length != 2) {
-                console.log('Error - malformed id ' + id);
-            } else if (!self.isset(_ids[parts[0]])) {
-                console.log('Error - Trying to free ' + id + ' but key not found');
-            } else if (_ids[parts[0]].available.indexOf(parts[1]) >= 0) {
-                console.log('Error - id ' + id + ' has already been released');
+            var parts = String(id).split('-'); // some-key-0
+            if (parts.length < 2) {
+                self.error('Error - malformed id ' + id);
+                return;
+            }
+            var cnt = parseInt(parts[parts.length - 1]);
+            parts.pop();
+            var key = parts.join('-');
+            if (!self.isset(ids[key])) {
+                self.error('Error - Trying to free {0} but key not found'.format(id));
+            } else if (ids[key].available.indexOf(cnt) >= 0) {
+                self.error('Error - id {0} has already been released'.format(id));
             } else {
-                _ids[parts[0]].available.push(parts[1]);
+                //self.debug('releasing key={0}, cnt={1} for reconsumption'.format(key, cnt));
+                ids[key].available.push(cnt);
             }
         };
     })(),
 };
 
-var self = module.exports;
-
-that = module.exports;
-
-// printf-ish function (from Stack Overflow)
-// http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
-if (!String.prototype.format) {
-    String.prototype.format = function() {
-        var args = arguments;
-        return this.replace(/{(\d+)}/g, function (match, number) {
-            return typeof args[number] != 'undefined' ? args[number] : match;
-        });
-    };
-}
+self = module.exports;

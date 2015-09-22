@@ -8,12 +8,18 @@ var g    = require('./global.js'),
     app  = express(),
     fs   = require('fs'),
     bcrypt = require('bcrypt');
-
+/*
+process.on('uncaughtException', function (err) {
+    console.log(err.stack);
+    g.error(err);
+    process.exit(1);
+});
+*/
 /* Set up app to serve static content */
 
 app.use(express.static(__dirname + '/www'));
 app.listen(3000);
-console.log('Serving static content on 3000');
+g.debug('Serving static content on port 3000');
 
 /* Configuration */
 
@@ -27,18 +33,20 @@ for (var i = 2; i < process.argv.length; i++) {
     }
 }
 
-console.log('Starting node on ' + env);
+g.debug('Setting up node environment ' + env);
 
+/* database */
 // To hit the dev database locally, set up a tunnel through bento-dev-api1
 // ssh -N marc@bento-dev-api1 -L 3306:<database_host>:3306
+g.debug('Setting up database connectivity');
 g.mysql = new require('./db.js')(env);
-console.log('Initialized database connection pool');
 
 var conf = require('./private-NO-COMMIT.js')[env];
 
-console.log('Attempting to connect to redis at ' + conf.redis.host + ':' + conf.redis.port);
+/* redis */
+g.debug('Attempting to connect to redis at {0}:{1}'.format(conf.redis.host, conf.redis.port));
 g.redis = require('redis').createClient(conf.redis.port, conf.redis.host, { });
-console.log('Connected to redis');
+g.debug('Connected to redis');
 
 /* HTTP */
 
@@ -72,7 +80,8 @@ g.server = http.createServer(function (req, res) {
                     res.end(resp);      
                 }]);
             } catch (err) {
-                console.log(err);
+                //console.log(err.stack);
+                g.error(err);
                 res.end(api.error('generic'));
             }
         }
@@ -93,7 +102,7 @@ g.server = http.createServer(function (req, res) {
         var urlParts = url.parse(req.url, true);
         var uid = urlParts.query['uid'];
         var token = urlParts.query['token'];
-        var fn = urlParts.pathname; console.log('a');
+        var fn = urlParts.pathname;
         invoke(uid, token, fn, urlParts.query);
     }
 });
@@ -117,9 +126,9 @@ g.io.of('/').use(function (soc, next) {
     }
     */
     if (!g.isset(name)) {
-        soc.name = '{0}-{1}'.format('socket', g.idgen.next('socket')); // socket-0
+        soc.name = g.idgen.next('socket'); // socket-0
     } else {
-        soc.name = '{0}-{1}'.format(name, g.idgen.next(name));
+        soc.name = g.idgen.next(name);
     }
     /*
     var curr = g.getSocket(clientId);
@@ -142,11 +151,11 @@ g.io.of('/').use(function (soc, next) {
 
 g.io.on('connection', function (soc) {
 
-    console.log('Accepted WebSocket connection with ' + soc.name);
+    g.debug('Accepted WebSocket connection with ' + soc.name);
 
     soc.on('get', function (data, callback) {
         if (g.empty(data)) {
-            console.log('Error - received empty data on get channel');
+            g.error('Error - received empty data on get channel');
             callback(api.error('malformed_request'));
             return;
         }
@@ -171,13 +180,14 @@ g.io.on('connection', function (soc) {
                     soc.authenticated = true;
                     var clientId = res.ret.uid;
                     soc.clientId = clientId;
-                    g.setSocket(clientId, soc.id);
-                    var name = '{0}-{1}'.format(clientId, g.idgen.next(clientId)); // d-500-1
-                    console.log(soc.name + ' successfully authenticated; renaming to ' + name);
+                    g.setSocketId(clientId, soc.id);
+                    var name = g.idgen.next(clientId); // d-500-1
+                    g.debug('{0} successfully authenticated; renaming to {1}'.format(soc.name, name));
                     g.idgen.free(soc.name);
                     soc.name = name;
                     // Send any pending notifications
-                    push.flush(clientId);
+                    params.uid = clientId;
+                    api['/api/ready'](params, function () { });
                     // Notify any subscribers that this client is now online
                     api.notify_status(clientId, 'connected');
                 }
@@ -190,7 +200,7 @@ g.io.on('connection', function (soc) {
                 params.uid = soc.clientId;
                 api[fn].apply(api, [params, callback]);
             } catch (err) {
-                console.log(err);
+                g.error(err);
                 callback(api.error('generic'));
             }
         } else {
@@ -201,16 +211,16 @@ g.io.on('connection', function (soc) {
     // All clients must authenticate in the allotted timeframe, otherwise the connection will be terminated
     setTimeout(function () {
         if (!soc.authenticated && soc.connected) {
-            console.log('Disconnecting ' + soc.name + ' for failure to authenticate');
+            g.debug('Disconnecting ' + soc.name + ' for failure to authenticate');
             // This is the only time the server calls disconnect. The behavior is different such that
             // if the server shuts down, while the connection is lost, resuming does not force the 
             // user to re-authenticate.
             soc.disconnect(true);
         }
     }, 5000);
-  
+
     soc.on('disconnect', function () {
-        console.log(soc.name + ' has disconnected');
+        g.debug(soc.name + ' has disconnected');
         g.idgen.free(soc.name);
         if (soc.authenticated) {
             var sids = g.sockets[soc.clientId];
@@ -232,4 +242,4 @@ var serverPort = conf.server.port;
 
 g.server.listen(serverPort);//.setTimeout(30000); // 30 sec
 
-console.log('Hello, World! Server listening on port ' + serverPort + '.');
+g.debug('Hello, World! Server listening on port ' + serverPort);

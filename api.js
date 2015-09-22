@@ -86,14 +86,12 @@ module.exports = {
     gen_token: function (clientId) {
         //var str = clientId + new Date().getTime() + Math.floor(Math.random() * 8);
         //return bcrypt.hashSync(str, 1);
-        
         var token = '';
         var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         for (var i = 0; i < 64; i++) {
             token += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return token;
-        
     },
 
     // TODO: Implement time-constant token validation.
@@ -106,50 +104,33 @@ module.exports = {
         return g['tokens'][clientId]['token'] == token;
     },
 
-    /**
-     * @return
-     */
     '/api/authenticate': function (params, fn) {
         var username = params['username'],
             password = params['password'],
-            type     = params['type'];
+            type     = params['type'], // customer, driver, admin, or system
+            table    = g.mysql[type];
         if (!g.isset(username) || !g.isset(password) || !g.isset(type)) {
             fn(self._error(1, 'Missing username, password, or login type'));
             return;
         }
-        // node-mysql library automatically performs escaping to prevent sql injections
-        var select, update;
-        if (type == 'c') {
-            select = "SELECT pk_User AS pk, password FROM User WHERE email='{0}'";
-            update = "UPDATE User SET api_token='{0}' WHERE pk_User={1}";
-        } else if (type == 'd') {
-            // drivers
-            select = "SELECT pk_Driver AS pk, password FROM Driver WHERE email='{0}'";
-            update = "UPDATE Driver SET api_token='{0}' WHERE pk_Driver={1}";
-        } else if (type == 'a') { // admin
-            select = "SELECT pk_admin_User AS pk, password FROM admin_User WHERE username='{0}'";
-            update = "UPDATE admin_User SET api_token='{0}' WHERE pk_admin_User={1}";
-        } else if (type == 'b') { // back-end
-            select = "SELECT pk_api_User AS pk, api_password AS password FROM api_User WHERE api_username='{0}'";
-            update = "UPDATE api_User SET api_token='{0}' WHERE pk_api_User={1}";
-        } else {
+        if (!g.isset(table)) {
+            g.error('Error - unrecognized type {0}'.format(type));
             fn(self._error(1, 'Login type ' + type + ' not recognized'));
             return;
         }
-        console.log('Fetching authentication credentials');
-        g.mysql.exec(select.format(username), function (res) {
+        g.debug('Fetching authentication credentials');
+        table.getAuth(username, function (res) {
             if (res == null) {
                 fn(self._error(1, 'Database error during authentication'));
             } else if (res.length > 0 && !g.empty(res[0]['pk']) && !g.empty(res[0]['password'])) {
                 var pk = res[0]['pk'];
-                var clientId = '{0}{1}'.format(type, pk); // c500
+                var clientId = '{0}-{1}'.format(type.substring(0, 1), pk); // c-500
                 var hash = res[0]['password'];
-                // Async compare using bcyrpt
+                // Async compare using bcrypt
                 bcrypt.compare(password, hash, function (err, res) {
                     if (err) {
                         // error with bcrypt
                         var msg = 'Error with bcrypt - ' + err;
-                        console.log(msg);
                         fn(self._error(1, msg));
                     } else if (res) {
                         // Good - check if an API token has already been generated for another user instance
@@ -164,12 +145,12 @@ module.exports = {
                         var ret = {
                             uid: clientId, token: token, expiryTs: -1,
                         };
-                        // Update database
-                        g.mysql.exec(update.format(token, pk), function (res) {
+                        // Write token to database
+                        table.updateToken(pk, token, function (res) {
                             if (res == null) {
                                 fn(that._error(1, 'Error writing token to database'));
                             } else {
-                                console.log('Assigned {0} access token {1}'.format(clientId, token));
+                                g.debug('Assigned {0} access token {1}'.format(clientId, token));
                                 g.tokens[clientId] = ret;
                                 fn(that._success(ret));
                             }
@@ -220,39 +201,53 @@ module.exports = {
         }
     },
 
-    '/api/push': function (params, fn) {console.log('here');
-        var rid  = g.get(params, 'rid', null);
+    '/api/ready': function (params, fn) {
+        var uid = params['uid'];
+        var socs = g.getSockets(uid);
+        if (socs.length <= 0) {
+            g.error('Error - no sockets found for ' + uid);
+            if (g.isset(fn)) fn(api.error('generic'));
+        } else {
+            for (var i = 0; i < socs.length; i++) {
+                socs[i].ready = true;
+            }
+            push.flush(uid);
+        }
+    },
+
+    '/api/push': function (params, fn) {
+        var rid  = g.getOrElse(params['rid'], null);
             from = params.from,
             to   = params.to,
             subject = params.subject,
             body = params.body;
         if (!g.isset(to) || !g.isset(subject) || !g.isset(body)) {
-            fn(self._error(1, 'Missing to, subject, or body parameter(s)'));
+            if (g.isset(fn)) fn(self._error(1, 'Missing to, subject, or body parameter(s)'));
             return;
         }
+        var timestamp = g.getOrElse(params['timestamp'], -1);
         var p = {
-            rid: rid, from: from, to: to, subject: subject, body: body
+            rid: rid, from: from, to: to, subject: subject, body: body, timestamp: timestamp,
         };
         var recipient = JSON.parse(to);
         if (recipient instanceof Array) {
             // Enqueue push notification then schedule a pop
             for (var i = 0; i < recipient.length; i++) {
                 p.to = recipient[i];
-                console.log("pushing msg to " + p.to);
                 push.queue(String(recipient[i]), JSON.stringify(p));
             }
-            fn(self._success('ok'));
+            if (g.isset(fn)) fn(self._success('ok'));
         } else if ('*' === recipient) {
-            fn(self._error(1, 'Error - global pushes currently not supported'));
+            if (g.isset(fn)) fn(self._error(1, 'Error - global pushes currently not supported'));
         } else {
             g['redis'].SMEMBERS(self._cacheKeyGroup(recipient), function (err, ret) {
                 if (err != null) {
-                    console.log('Error getting members for ' + that._cacheKeyGroup(recipient) + ' - ' + err);
+                    g.error('Error getting members for ' + that._cacheKeyGroup(recipient) + ' - ' + err);
                 } else {
                     for (var i = 0; i < ret.length; i++) {
                         push.queue(String(ret[i]), JSON.stringify(p));
                     }
-                    fn(that._success('ok'));
+                    if (g.isset(fn)) fn(that._success('ok'));
                 }
             }); // g['redis'].SMEMBERS
         }
