@@ -221,6 +221,7 @@ module.exports = {
                 self.error('Error - id {0} has already been released'.format(id));
             } else {
                 //self.debug('releasing key={0}, cnt={1} for reconsumption'.format(key, cnt));
+                // XXX - insert key into the correct sorted position!
                 ids[key].available.push(cnt);
             }
         };

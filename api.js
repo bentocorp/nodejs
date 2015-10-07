@@ -91,7 +91,7 @@ module.exports = {
         for (var i = 0; i < 64; i++) {
             token += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        return token;
+        return clientId + "-" + token;
     },
 
     // TODO: Implement time-constant token validation.
@@ -135,16 +135,12 @@ module.exports = {
                     } else if (res) {
                         // Good - check if an API token has already been generated for another user instance
                         if (g.tokens[clientId] != null) {
-                            fn(self._success({
-                                uid: clientId, token: g.tokens[clientId], expiryTs: -1  
-                            }));
+                            fn(self._success(g.tokens[clientId]));
                             return;
                         }
                         // If none exist, generate a new one
-                        var token = self.gen_token(clientId);
-                        var ret = {
-                            uid: clientId, token: token, expiryTs: -1,
-                        };
+                        var token = self.gen_token(clientId); // d-890-0yH5ob94
+                        var ret = { token: token };
                         // Write token to database
                         table.updateToken(pk, token, function (res) {
                             if (res == null) {
@@ -206,7 +202,7 @@ module.exports = {
         var socs = g.getSockets(uid);
         if (socs.length <= 0) {
             g.error('Error - no sockets found for ' + uid);
-            if (g.isset(fn)) fn(api.error('generic'));
+            if (g.isset(fn)) fn(self.error('generic'));
         } else {
             for (var i = 0; i < socs.length; i++) {
                 socs[i].ready = true;

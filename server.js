@@ -100,8 +100,9 @@ g.server = http.createServer(function (req, res) {
     } else {
         // GET
         var urlParts = url.parse(req.url, true);
-        var uid = urlParts.query['uid'];
         var token = urlParts.query['token'];
+        var p = token.split("-");
+        var uid = p[0] + "-" + p[1];
         var fn = urlParts.pathname;
         invoke(uid, token, fn, urlParts.query);
     }
@@ -178,7 +179,8 @@ g.io.on('connection', function (soc) {
                 // If successful, mark socket as authenticated then associate client with socket identifier
                 if (res['code'] == 0 && !g.empty(res['ret'])) {
                     soc.authenticated = true;
-                    var clientId = res.ret.uid;
+                    var p = res.ret.token.split("-");
+                    var clientId = p[0] + "-" + p[1];
                     soc.clientId = clientId;
                     g.setSocketId(clientId, soc.id);
                     var name = g.idgen.next(clientId); // d-500-1
