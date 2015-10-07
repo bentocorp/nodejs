@@ -17,7 +17,7 @@ process.on('uncaughtException', function (err) {
 */
 /* Set up app to serve static content */
 
-app.use(express.static(__dirname + '/www'));
+app.use(express.static('/sites/atlas/current'));
 app.listen(3000);
 g.debug('Serving static content on port 3000');
 
