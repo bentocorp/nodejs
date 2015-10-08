@@ -47,8 +47,8 @@ def npm_install(module_name)
 	end
 end
 
-desc "Start the node server"
-task :start_server do
+desc "Install node modules and set up symlinks"
+task :setup_server do
 	on roles(:all) do |host|
 		# ":deploy_to/" automatically prepended to second argument!
 		symlink("/opt/node/bin/node", "shared/node")
@@ -60,10 +60,38 @@ task :start_server do
 		npm_install("mysql")
 		npm_install("bcrypt")
 		npm_install("winston")
+		npm_install("socket.io-redis");
+		npm_install("uid2");
+		npm_install("uuid");
 		symlink("#{fetch(:deploy_to)}/shared/node", "current/node")
 		symlink("#{fetch(:deploy_to)}/shared/node_modules", "current/node_modules")
 		upload! "private-NO-COMMIT.js", "#{fetch(:deploy_to)}/current", :via => :scp
 		upload! "config/shared/#{fetch(:stage)}/", "#{fetch(:deploy_to)}/shared", :via => :scp, :recursive => true
-		execute "cd #{fetch(:deploy_to)}/current && ./node server.js -e #{fetch(:stage)}"
+		# start server in a separate task
+		#execute "cd #{fetch(:deploy_to)}/current && ./node server.js -e #{fetch(:stage)}"
+	end
+end
+
+desc "Start the server"
+task :start_server do
+	on roles(:all) do |host|
+		# huponexit is off in Capistrano shell so sub-processes will continue to run after exit (nohup not required)
+		# Not sure why, but the brackets are required to start the server as a background process
+		execute "cd #{fetch(:deploy_to)}/current && (nohup ./node server.js -e #{fetch(:stage)} >/dev/null 2>&1 &)"
+	end
+end
+
+desc "Stop the server"
+task :stop_server do
+	on roles(:all) do |host|
+		execute "ps -e | grep -oP '^\s*[0-9]+(?=\s.+\snode$)' | sed -e 's/\s\+//g' | xargs kill -9"
+	end
+end
+
+desc "Restart the server"
+task :restart_server do
+	on roles(:all) do |host|
+		stop_server
+		start_server
 	end
 end

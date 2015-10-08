@@ -3,22 +3,48 @@
  * @copyright
  */
 var winston = require('winston');
+
+// printf-ish function (from Stack Overflow)
+// http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function (match, number) {
+            return typeof args[number] != 'undefined' ? args[number] : match;
+        });
+    };
+}
+
+function prepend(val, width, str) {
+    // Default to prepending zeros for dates
+    width = (width == undefined) ? 2 : width;
+    str = (str == undefined) ? "0" : str;
+    var res = "", 
+        padding = width - String(val).length;
+    for (; padding > 0; padding--) {
+        res += str;
+    }
+    return res + val;
+}
+
 var format = function (options) {
     //console.log(options);
-    var level= "",
-        padding = 5 - options.level,
-        msg  = "";
-    for (; padding > 0; padding--) {
-        level += ' ';
-    }
+    var level = prepend(options.level.toUpperCase(), 5, ' '),
+        msg = "";
     if (options.meta.stack) {
         msg = options.meta.stack.join("\n");
     } else {
         msg = options.message;
     }
-    level += options.level.toUpperCase();
-    return (new Date).toISOString() + ' ' + level + ' ' + process.pid + ' - ' + msg;
+    // Make sure the host is configured with the right timezone! (-0700 or pacific time for SF)
+    // sudo rm /etc/localtime && sudo ln -s /usr/share/zoneinfo/US/Pacific /etc/localtime
+    var date  = new Date();
+    var dateStr = "{0}-{1}-{2} {3}:{4}:{5}".format(date.getFullYear(), prepend(date.getMonth() + 1), prepend(date.getDate()),
+        prepend(date.getHours()), prepend(date.getMinutes()), prepend(date.getSeconds()));
+    //console.log(dateStr);
+    return dateStr + ' ' + level + ' ' + process.pid + ' - ' + msg;
 }
+
 var logger = new winston.Logger({
     transports: [
         new winston.transports.Console({
@@ -27,6 +53,7 @@ var logger = new winston.Logger({
             formatter: function (options) { if (options.meta.stack) return options.meta.stack.join('\n'); else return options.message; },
             json: false,
             handleExceptions: true,
+            debugStdout: true, // Write to stdout not stderr! Default is false (unintuitively); caused a lot of problems with Capistrano!
         }),
         new winston.transports.File({
             name: 'debug-log',
@@ -46,17 +73,6 @@ var logger = new winston.Logger({
         }),
     ]
 });
-
-// printf-ish function (from Stack Overflow)
-// http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
-if (!String.prototype.format) {
-    String.prototype.format = function() {
-        var args = arguments;
-        return this.replace(/{(\d+)}/g, function (match, number) {
-            return typeof args[number] != 'undefined' ? args[number] : match;
-        });
-    };
-}
 
 // Use "self" instead of "this" because context is variable based on how functions
 // are invoked
@@ -78,6 +94,8 @@ module.exports = {
     server: null, // http.Server
 
     io    : null, // socket.io.Server
+
+    nio   : null,
 
     redis : null, // node_redis
 
@@ -153,29 +171,89 @@ module.exports = {
         }
         return obj;
     },
-  
-    setSocketId: function (clientId, sid) {
-        if (!self.isset(self.sockets[clientId])) {
-            self.sockets[clientId] = [];
+
+    ackServerHeartbeat: function (serverId) {
+        var socs = self.sockets[serverId];
+        if (!self.isset(socs)) {
+            self.sockets[serverId] = {
+                connected: { }
+            };
         }
-        self.sockets[clientId].push(sid);
+        self.sockets[serverId].heartbeatTs = (new Date).getTime();
     },
 
-    getSockets: function (clientId) {
-        var sids = self.sockets[clientId]; // c-3007: [1234, 9876, 8060]
-        var socs = [];
-        if (self.isset(sids)) {
-            for (var i = 0; i < sids.length; i++) {
-                var sid = sids[i],
-                    soc = self.io.sockets.connected[sid];
-                if (!self.isset(soc)) {
-                    self.error('Error - sid {0} does not exist for {1}'.format(sid, clientId));
-                } else {
-                    socs.push(soc);
+    setSocketId: function (serverId, clientId, sid) {
+        var socs = self.sockets[serverId];
+        if (!self.isset(socs)) {
+            self.ackServerHeartbeat(serverId);
+        }
+        var connected = self.sockets[serverId].connected;
+        if (!self.isset(connected[clientId])) {
+            connected[clientId] = [];
+        }
+        var i = connected[clientId].indexOf(sid);
+        if (i >= 0) {
+            self.debug('warning - socket {0} already set for {1} on server {2}'.format(sid, clientId, serverId));
+            return false;
+        }
+        connected[clientId].push(sid);
+        return true;
+    },
+
+    // self.sockets = {
+    //     7b80-e8yT-6969-0br9-Wero: {
+    //         heartbeatTs: 7890,
+    //         connected: {
+    //            'd-8': [80pTew, 2ezM6],
+    //            'c-9': []
+    //         }
+    //     }
+    //     89yT-Hgw9-
+    // }
+    removeSocketId: function (serverId, clientId, sid) {
+        var socs = self.sockets[serverId];
+        if (self.isset(socs)) {
+            var connected = socs.connected[clientId];
+            if (self.isset(connected)) {
+                var i = connected.indexOf(sid);
+                if (i < 0) {
+                    self.error('removeSocketId - socket {0} not connected for {1} on server {2}'.format(sid, clientId, serverId));
+                    return false;
+                }
+                connected.splice(i, 1);
+                if (connected.length <= 0) {
+                    delete socs.connected[clientId];
+                    return true;
+                }
+            } else {
+                self.error('Trying to remove sid from non-existent client {1} on server {2}'.format(sid, clientId, serverId));
+            }
+        } else {
+            self.error('Trying to remove sid {0} from non-existent server {1}'.format(sid, serverId));
+        }
+        return false;
+    },
+
+    getSocketIds: function (serverId, clientId) {
+        var socs = self.sockets[serverId];
+        if (!self.isset(socs)) {
+            return [ ];
+        }
+        return self.getOrElse(socs.connected[clientId], [ ]);
+    },
+    
+    isconnected: function (clientId) {
+        var socs = self.sockets;
+        for (var key in socs) {
+            if (socs.hasOwnProperty(key)) {
+                var serverId = key;
+                var sids = socs[serverId].connected[clientId];
+                if (sids != null && sids.length > 0) {
+                    return true;
                 }
             }
         }
-        return socs;
+        return false;
     },
 
     getOrElse: function (obj, dyfault) {
@@ -212,20 +290,31 @@ module.exports = {
                 self.error('Error - malformed id ' + id);
                 return;
             }
-            var cnt = parseInt(parts[parts.length - 1]);
-            parts.pop();
+            // remove the last element (the counter) & cast to int
+            var cnt = parseInt(parts.pop());
             var key = parts.join('-');
             if (!self.isset(ids[key])) {
-                self.error('Error - Trying to free {0} but key not found'.format(id));
+                self.error('Error - Trying to free {0} but key {1} not found'.format(id, key));
             } else if (ids[key].available.indexOf(cnt) >= 0) {
                 self.error('Error - id {0} has already been released'.format(id));
             } else {
                 //self.debug('releasing key={0}, cnt={1} for reconsumption'.format(key, cnt));
-                // XXX - insert key into the correct sorted position!
-                ids[key].available.push(cnt);
+                // insert key into the correct sorted position!
+                var available = ids[key].available;
+                for (var i = 0; i < available.length; i++) {
+                    if (available[i] >= cnt) {
+                        available.splice(i, 0, cnt);
+                        return;
+                    }
+                }
+                available.push(cnt);
             }
         };
     })(),
+
+    roomTrackers: function (clientId) {
+        return 'room_' + clientId;
+    },
 };
 
 self = module.exports;

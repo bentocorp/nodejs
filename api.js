@@ -63,45 +63,35 @@ module.exports = {
     WS_STAT: 'stat',
 
     notify_status: function (clientId, status) {
-        g.redis.SMEMBERS(that._cacheKeySubscribers(clientId), function (err, ret) {
-            if (err) {
-                console.log('Error: notify_status - ' + err);
-            } else {
-                for (var i = 0; i < ret.length; i++) {
-                    var socs = g.getSockets(ret[i]);
-                    for (var j = 0; j < socs.length; j++) {
-                        var soc = socs[j];
-                        if (soc.connected) {
-                            var data = {
-                                clientId: clientId, status: status,
-                            };
-                            soc.emit(that.WS_STAT, JSON.stringify(data));
-                        }
-                    }
-                }
-            }
-        });
+        var data = {
+            clientId: clientId, status: status,
+        };
+        g.io.sockets.in(g.roomTrackers(clientId)).emit(self.WS_STAT, JSON.stringify(data));
     },
 
     gen_token: function (clientId) {
         //var str = clientId + new Date().getTime() + Math.floor(Math.random() * 8);
         //return bcrypt.hashSync(str, 1);
-        var token = '';
+        var rpart = "";
         var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        for (var i = 0; i < 64; i++) {
-            token += chars.charAt(Math.floor(Math.random() * chars.length));
+        for (var i = 0; i < 8; i++) {
+            rpart += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        return clientId + "-" + token;
+        // For now, does not expire
+        return clientId + "-0-" + rpart;
     },
 
-    // TODO: Implement time-constant token validation.
+    // TODO - Implement time-constant token validation
     verify_token: function (clientId, token) {
         if (!g.isset(g['tokens'][clientId])) {
+            g.debug('verify_token - not set for {0}'.format(clientId));
             // Check if the token is stored in redis / mysql
             return false;
         }
-        // XXX: Need to check expiryTs
-        return g['tokens'][clientId]['token'] == token;
+        var persisted = g['tokens'][clientId];
+        console.log('verify_token - comparing provided ' + token + ' with persisted ' + persisted);
+        // XXX - Need to check expiryTs
+        return persisted == token;
     },
 
     '/api/authenticate': function (params, fn) {
@@ -135,7 +125,7 @@ module.exports = {
                     } else if (res) {
                         // Good - check if an API token has already been generated for another user instance
                         if (g.tokens[clientId] != null) {
-                            fn(self._success(g.tokens[clientId]));
+                            fn(self._success({ token: g.tokens[clientId] }));
                             return;
                         }
                         // If none exist, generate a new one
@@ -147,7 +137,7 @@ module.exports = {
                                 fn(that._error(1, 'Error writing token to database'));
                             } else {
                                 g.debug('Assigned {0} access token {1}'.format(clientId, token));
-                                g.tokens[clientId] = ret;
+                                g.tokens[clientId] = token;
                                 fn(that._success(ret));
                             }
                         });
@@ -163,8 +153,18 @@ module.exports = {
     },
 
     '/api/greet': function (params, fn) {
+        console.log('connected - ' + Object.keys(g.io.sockets.connected));
         var clientId = params['uid'];
         fn(that._success('Hello, ' + clientId + '!'));
+    },
+
+    '/api/test': function (params, fn) {
+        fn(self._success("ok"));
+    },
+
+    '/api/connected': function (params, fn) {
+        var ret = g.isconnected(params['clientId']);
+        fn(self._success(ret));
     },
   
     /** Push notifications **/
@@ -197,16 +197,34 @@ module.exports = {
         }
     },
 
+    // Ready for push data via WebSocket
     '/api/ready': function (params, fn) {
-        var uid = params['uid'];
-        var socs = g.getSockets(uid);
-        if (socs.length <= 0) {
-            g.error('Error - no sockets found for ' + uid);
-            if (g.isset(fn)) fn(self.error('generic'));
+        var uid = params['uid'],
+            sid = params['sid'];
+        if (!g.isset(sid)) {
+            throw 'Error - parameter sid (socket identifier) not found; make sure /api/ready is called via WebSocket';
+        }
+        var soc = g.io.sockets.connected[sid];
+        if (!g.isset(soc)) {
+            fn(self._error(1, "Something is very wrong - socket object doesn't exist"));
         } else {
-            for (var i = 0; i < socs.length; i++) {
-                socs[i].ready = true;
-            }
+            soc.ready = true;
+            soc.join(String(uid));
+            g.debug('{0} joined room(s) {1}'.format(soc.name, uid));
+            g['redis'].SMEMBERS(self._cacheKeyTrackList(uid), function (err, ret) {
+                if (err) {
+                    fn(self._error(1, 'Error getting subscriptions for ' + self._cacheKeyTrackList(uid) + ' - ' + err));
+                } else if (g.isset(soc)) {
+                    var rooms = [];
+                    for (var i = 0; i < ret.length; i++) {
+                        var room = g.roomTrackers(ret[i]);
+                        rooms.push(room);
+                        soc.join(room);
+                    }
+                    g.debug('{0} joined room(s) {1}'.format(soc.name, rooms.join(", ")));
+                    fn(self._success('ok'));
+                }
+            });
             push.flush(uid);
         }
     },
@@ -223,7 +241,7 @@ module.exports = {
         }
         var timestamp = g.getOrElse(params['timestamp'], -1);
         var p = {
-            rid: rid, from: from, to: to, subject: subject, body: body, timestamp: timestamp,
+            rid: rid, from: from, to: to, subject: subject, body: JSON.parse(body), timestamp: timestamp,
         };
         var recipient = JSON.parse(to);
         if (recipient instanceof Array) {
@@ -249,100 +267,91 @@ module.exports = {
         }
     },
 
-    /** Geotracking **/
+    /* Tracking */
   
     WS_LOC: 'loc',
-    
+
     _cacheKeyLatLng: function (uid) {
-        return 'loc_' + uid + '.latlng';
-    },
-    
-    _cacheKeySubscribers: function (uid) {
-        return 'loc_' + uid + '.subscribers';
+        return uid + '_latlng';
     },
 
-    /**
-     * Get (one time) the location of one or more clients.
-     */
+    _cacheKeySubscribers: function (uid) {
+        return uid + '_subscribers';
+    },
+    
+    _cacheKeyTrackList: function (uid) {
+        // {0}_ does't work here!
+        return uid + '_trackList';
+    },
+
     '/api/gloc': function (params, fn) {
-        // TODO
-        fn(that._error(1, 'This API is currently not implemented.'));
+        var uid = params['uid'],
+            clientId = params['clientId'];
+        g['redis'].GET(self._cacheKeyLatLng(clientId), function (err, ret) {
+            if (err) {
+                fn(self._error(1, 'Error fetching ' + self._cacheKeyLatLng(clientId) + ' - ' + err));
+            } else {
+                var obj = null;
+                if (!g.empty(ret)) {
+                    obj = JSON.parse(ret);
+                    obj.clientId = clientId;
+                }
+                fn(self._success(obj));
+            }
+        });
     },
   
-    /**
-     * Update GPS location.
-     * @param uid The user identifier of the client (customer or driver) whose
-     *            location is to be updated. 
-     * @param lng Longitude.
-     * @param lat Latitude.
-     */
-    '/api/uloc': function (params, fn) {// check to see if the user even supplied a callback function!
+    '/api/uloc': function (params, fn) {
         var uid = params['uid'],
             lat = params['lat'],
             lng = params['lng'],
             obj = {
                 'lat': lat, 'lng': lng,
             };
-        // Update location in cache.
-        g['redis'].SET(that._cacheKeyLatLng(uid), JSON.stringify(obj), function (err, ret) {
-            if (err != null) {
-                fn(that._error(1, err));
+        // First persist coordinates to redis
+        g['redis'].SET(self._cacheKeyLatLng(uid), JSON.stringify(obj), function (err, ret) {
+            if (err) {
+                fn(self._error(1, err));
             } else {
-                fn(that._success(''));
-                // Then push loc update to all subscribers.
-                g['redis'].SMEMBERS(that._cacheKeySubscribers(uid), function (err, ret) {
-                    if (err != null) {
-                        console.log('Error getting subscribers for ' + that._cacheKeySubscribers(uid) + ' - ' + err);
-                    } else {
-                        for (var i = 0; i < ret.length; i++) {
-                            var socs = g.getSockets(ret[i]);
-                            for (var j = 0; j < socs.length; j++) {
-                                var soc = socs[j];
-                                if (soc.connected) {
-                                    obj.clientId = uid;
-                                    soc.emit('loc', JSON.stringify(obj));
-                                }
-                            }
-                        }
-                    }
-                }); // g['redis'].SMEMBERS
+                fn(self._success("ok"));
+                // Then push loc update to all subscribers
+                obj.clientId = uid;
+                g.io.sockets.in(g.roomTrackers(uid)).emit('loc', JSON.stringify(obj));
             } 
         }); // g['redis'].SET
     },
 
     '/api/track': function (params, fn) {
         var uid = params['uid'],
-            clientId = params['client_id']; // clientId not client_id (again must standardize!)
-        g['redis'].SADD(that._cacheKeySubscribers(clientId), uid, function (err, ret) {
-            if (err != null) {
-                fn(that._error(1, err));
+            clientId = params['clientId'];
+        if (!g.isset(uid) || !g.isset(clientId)) {
+            fn(self._error(1, 'Error - missing paramters uid or clientId'));
+            return;
+        }
+        // TODO - add uid to client's subscribers list also
+        //console.log('SADD ' + self._cacheKeyTrackList(uid) + ' ' + clientId);
+        g['redis'].SADD(self._cacheKeyTrackList(uid), clientId, function (err, ret) {
+            if (err) {
+                fn(self._error(1, err));
             } else {
-                var cSocs = g.getSockets(clientId);
-                fn(that._success({
-                    'clientId': clientId, connected: (cSocs.length > 0),
+                g.nio.broadcastTrack(uid, clientId);
+                var connected = g.isconnected(clientId);
+                fn(self._success({
+                    'clientId': clientId, 'connected': connected,
                 }));
+                /*
                 // Then if there's any location data available, immediately send it.
                 // XXX: Do not send stale location data. Maybe only send if client is online?
-                if (g.empty(cSocs)) {
+                if (!connected) {
                     return;
                 }
-                g['redis'].GET(that._cacheKeyLatLng(clientId), function (err, ret) {
-                    if (err != null) {
-                        console.log('Error fetching ' + that._cacheKeyLatLng(clientId) + ' - ' + err);
-                    } else if (!g.empty(ret)) {
-                        var socs = g.getSockets(uid);
-                        for (var i = 0; i < socs.length; i++) {
-                            var soc = socs[i];
-                            if (soc.connected) {
-                                var obj = JSON.parse(ret);
-                                obj.clientId = clientId;
-                                soc.emit('loc', JSON.stringify(obj));
-                            }
-                        }
-                    }
-                }); // g['redis'].GET
+                */
             }
         }); // g['redis'].SADD
+    },
+
+    '/api/untrack': function (params, fn) {
+        fn(self._error(1, '/api/untrack not implemented yet =('));
     },
 };
 that = module.exports;

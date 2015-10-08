@@ -15,6 +15,13 @@ module.exports = {
     },
 
     _deliver: function (clientId, msg) {
+        if (g.isconnected(clientId)) {
+            console.log('Push - {0}, {1}'.format(clientId, msg));
+            g.io.sockets.in(String(clientId)).emit(self.WS_PUSH, msg);
+            return true;
+        }
+        return false;
+        /*
         var res = false;
         var socs = g.getSockets(clientId);
         for (var i = 0; i < socs.length; i++) {
@@ -27,6 +34,7 @@ module.exports = {
             }
         }
         return res;
+        */
     },
 
     flush: function (clientId) {

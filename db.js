@@ -11,7 +11,7 @@ module.exports = function (env) {
 
 	var _conf = conf[env].mysql;
 	
-	g.debug('Instantiating database connection pool as ' + _conf['username'] + '@' + _conf['host'] + ':' + _conf['port']);
+	g.debug('    Instantiating database connection pool as ' + _conf['username'] + '@' + _conf['host'] + ':' + _conf['port']);
 	
 	var _pool = mysql.createPool({
 		connectionLimit: 100, // max # of connections created
@@ -30,7 +30,7 @@ module.exports = function (env) {
 		if (err) {
 			throw new Error('Error connecting to database - ' + err);
 		}
-		g.debug('Connected to database');
+		//g.debug('    Connected to database');
 		con.release();
 	});
 
@@ -94,7 +94,7 @@ module.exports = function (env) {
 		customer: new Table('User'),
 		driver: new Table('Driver'),
 		admin: new Table('admin_User', { colUsername: 'username' }),
-		system: new Table('api_User', { colUsername: 'api_username', colPassword: 'api_password' }),
+		system: new Table('houston_api_User', { colUsername: 'api_username', colPassword: 'api_password' }),
 		/*
 		exec: function (sql, callback) {
 			//console.log(sql);

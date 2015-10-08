@@ -8,6 +8,7 @@ var g    = require('./global.js'),
     app  = express(),
     fs   = require('fs'),
     bcrypt = require('bcrypt');
+
 /*
 process.on('uncaughtException', function (err) {
     console.log(err.stack);
@@ -23,17 +24,26 @@ g.debug('Serving static content on port 3000');
 
 /* Configuration */
 
-var env = 'local';
+var env = 'local',
+    serverPort   = null;
+    serverId     = null,
+    requireToken = true;
 for (var i = 2; i < process.argv.length; i++) {
     switch (process.argv[i]) {
         case '-e': // Environment
             env = process.argv[++i]; break;
+        case '-p': // Server port
+            serverPort = process.argv[++i]; break;
+        case '--server-id':
+            serverId = process.argv[++i]; break; // Server uuid (for testing only!)
+        case '--no-auth':
+            requireToken = false; break; // If false, any token works
         default:
             throw 'Unrecognized argument: ' + process.argv[i];
     }
 }
 
-g.debug('Setting up node environment ' + env);
+g.debug('Environment - {0}'.format(env));
 
 /* database */
 // To hit the dev database locally, set up a tunnel through bento-dev-api1
@@ -44,9 +54,14 @@ g.mysql = new require('./db.js')(env);
 var conf = require('./private-NO-COMMIT.js')[env];
 
 /* redis */
+var redis = require('redis');
 g.debug('Attempting to connect to redis at {0}:{1}'.format(conf.redis.host, conf.redis.port));
-g.redis = require('redis').createClient(conf.redis.port, conf.redis.host, { });
-g.debug('Connected to redis');
+g.redis = redis.createClient(conf.redis.port, conf.redis.host, { });
+g.debug('    Connected to redis');
+
+/* inter-node communication */
+var nio = new require('./inter-node')(redis, conf, serverId);
+g.nio = nio;
 
 /* HTTP */
 
@@ -64,15 +79,33 @@ g.server = http.createServer(function (req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'text/json');
     res.writeHead(200);
-    var invoke = function (uid, token, fn, params) {
+    var invoke = function (token, fn, params) {
         if (!g.isset(api[fn])) {
             res.end(api.error('not_found'));
-        } else if (!g.isset(uid)) { 
-            res.end(api.error('malformed_request'));
-        } else if ((fn != '/api/authenticate' && (!g.isset(token) || !api.verify_token(uid, token))) || !api.is_valid(req)) {
-            res.end(api.error('bad_auth'));
         } else {
+            var uid;
+            if (fn != '/api/authenticate') {
+                // Token required if anything but /api/authenticate
+                if (!g.isset(token)) {
+                    res.end(api.error('malformed_request'));
+                    return;
+                }
+                var p = token.split("-");
+                if (p.length < 3) {
+                    console.log('Error - bad-auth - {0}'.format(token));
+                    res.end(api.error('bad_auth'));
+                    return;
+                }
+                uid = p[0] + "-" + p[1];
+                if (requireToken && (!api.verify_token(uid, token) || !api.is_valid(req))) {
+                    var ans = api.verify_token(uid, token);
+                    console.log('Error - bad-auth - verify_token({0}, {1}) returned {2}'.format(uid, token, ans));
+                    res.end(api.error('bad_auth'));
+                    return;
+                }
+            }
             try {
+                params.uid = uid;
                 // XXX: It's very important that these request handlers are invoked with apply().
                 // Turns out the context must be supplied manually so that the keyword this
                 // works properly in the module.
@@ -98,13 +131,10 @@ g.server = http.createServer(function (req, res) {
         // not supported for now
         res.end(api.error('not_found'));
     } else {
-        // GET
         var urlParts = url.parse(req.url, true);
         var token = urlParts.query['token'];
-        var p = token.split("-");
-        var uid = p[0] + "-" + p[1];
         var fn = urlParts.pathname;
-        invoke(uid, token, fn, urlParts.query);
+        invoke(token, fn, urlParts.query);
     }
 });
 
@@ -112,6 +142,8 @@ g.server = http.createServer(function (req, res) {
 
 // Attach socket.io to the above HTTP server
 g.io = require('socket.io')(g.server);
+
+g.io.adapter(require('socket.io-redis')({ host: conf.redis.host, port: conf.redis.port }));
 
 g.io.of('/').use(function (soc, next) {
     // Temporary identifier for debugging purposes (to track unauthenticated sockets); not required
@@ -146,7 +178,8 @@ g.io.of('/').use(function (soc, next) {
     }
     */
     soc['authenticated'] = false;
-    soc['ready'] = false;
+    // use rooms instead
+    //soc['ready'] = false;
     next();
 });
 
@@ -162,7 +195,7 @@ g.io.on('connection', function (soc) {
         }
         var urlParts = decodeURI(data).split('?');
         // fn - the API function to invoke
-        var fn = urlParts[0], params = { };
+        var fn = urlParts[0], params = { sid: soc.id };
         if (g.isset(urlParts[1])) {
             var query = urlParts[1].split('&');
             for (var i = 0; i < query.length; i++) {
@@ -179,19 +212,18 @@ g.io.on('connection', function (soc) {
                 // If successful, mark socket as authenticated then associate client with socket identifier
                 if (res['code'] == 0 && !g.empty(res['ret'])) {
                     soc.authenticated = true;
-                    var p = res.ret.token.split("-");
-                    var clientId = p[0] + "-" + p[1];
+                    var p = res.ret.token.split("-"); // d-500-7z90pyT
+                    var clientId = p[0] + "-" + p[1]; // d-500
                     soc.clientId = clientId;
-                    g.setSocketId(clientId, soc.id);
                     var name = g.idgen.next(clientId); // d-500-1
                     g.debug('{0} successfully authenticated; renaming to {1}'.format(soc.name, name));
                     g.idgen.free(soc.name);
                     soc.name = name;
+                    // broadcast socket connection
+                    nio.csocket(clientId, soc.id, res.ret.token);
                     // Send any pending notifications
                     params.uid = clientId;
                     api['/api/ready'](params, function () { });
-                    // Notify any subscribers that this client is now online
-                    api.notify_status(clientId, 'connected');
                 }
                 callback(str);
             });
@@ -225,23 +257,28 @@ g.io.on('connection', function (soc) {
         g.debug(soc.name + ' has disconnected');
         g.idgen.free(soc.name);
         if (soc.authenticated) {
-            var sids = g.sockets[soc.clientId];
-            var i = sids.indexOf(soc.id);
-            sids.splice(i, 1);
-            if (sids.length == 0) {
-                // Notify subscribers if all user instances have disconnected
-                delete g.sockets[soc.clientId];
-                delete g.tokens[soc.clientId];
-                api.notify_status(soc.clientId, 'disconnected');
-            }
+            // broadcast socket disconnection
+            nio.dsocket(soc.clientId, soc.id);
         }
+    });
+
+    soc.on('pong', function (msg) {
+        g.debug(msg);
     });
 });
 
 /* Start the server */
-
-var serverPort = conf.server.port;
+if (serverPort == null) {
+    serverPort = conf.server.port;
+}
 
 g.server.listen(serverPort);//.setTimeout(30000); // 30 sec
 
 g.debug('Hello, World! Server listening on port ' + serverPort);
+
+
+process.on('SIGINT', function() {
+    g.error('Error - exiting due to SIGINT');
+    nio.signaldeath();
+    process.exit();
+});

@@ -36,7 +36,9 @@ set :deploy_to, '/sites/nodejs'
 # set :keep_releases, 5
 
 namespace :deploy do
-	after :finished, :start_server
+	after :finished, :setup_server
+	after :setup_server, :stop_server
+	after :stop_server, :start_server
 
   after :restart, :clear_cache do
     on roles(:web), in: :groups, limit: 3, wait: 10 do
