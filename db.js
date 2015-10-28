@@ -62,6 +62,11 @@ module.exports = function (env) {
 	}
 
 	Table.prototype.updateToken = function (pk, token, callback) {
+		// disable for customers for now
+		if (this.name == 'User') {
+			callback(1);
+			return;
+		}
 		var sql = "update {0} set {1}='{2}' where pk_{0}={3}"
 			.format(this.name, this.colToken, token, pk);
 		//g.debug(sql);
@@ -74,6 +79,18 @@ module.exports = function (env) {
 			}
 		});
 	}
+
+	Table.prototype.getTokenByPrimaryKey = function (key, callback) {
+		var sql = "select api_token from {0} where pk_{0}={1}".format(this.name, key);
+		_pool.query(sql, function (err, rows, fields) {
+			if (err) {
+				g.error('Error fetching token from database by primary key - ' + err.message);
+				throw err;
+			} else {
+				callback(rows);
+			}
+		});
+	};
 
 	Table.prototype.getAuth = function (username, callback) {
 		var sql = "select pk_{0} as pk, {1} as username, {2} as password, {3} as api_token from {0} where {1}='{4}'"

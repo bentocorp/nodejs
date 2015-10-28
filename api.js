@@ -211,6 +211,20 @@ module.exports = {
             soc.ready = true;
             soc.join(String(uid));
             g.debug('{0} joined room(s) {1}'.format(soc.name, uid));
+            // If client is admin, automatically add to "atlas" group
+            if (uid.split('-')[0] == 'a') {
+                g.debug('Trying to automatically add {0} to "atlas" group'.format(soc.name));
+                // TODO - Groups shouldn't be lazily loaded
+                //soc.join('atlas');
+                // persist client to group on redis so push notifications are properly queued
+                g.redis.SADD(self._cacheKeyGroup('atlas'), uid, function (err, ret) {
+                    if (err != null) {
+                        g.error('Error - Problem adding client {0} to group "atlas"'.format(uid));
+                    } else {
+                        g.debug('Added {0} to group "atlas"'.format(uid));
+                    }
+                });
+            }
             g['redis'].SMEMBERS(self._cacheKeyTrackList(uid), function (err, ret) {
                 if (err) {
                     fn(self._error(1, 'Error getting subscriptions for ' + self._cacheKeyTrackList(uid) + ' - ' + err));
@@ -243,6 +257,7 @@ module.exports = {
         var p = {
             rid: rid, from: from, to: to, subject: subject, body: JSON.parse(body), timestamp: timestamp,
         };
+        console.log(typeof to + "(" + to + ")");
         var recipient = JSON.parse(to);
         if (recipient instanceof Array) {
             // Enqueue push notification then schedule a pop

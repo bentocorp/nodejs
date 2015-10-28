@@ -82,7 +82,9 @@ g.server = http.createServer(function (req, res) {
     res.setHeader('Content-Type', 'text/json');
     res.writeHead(200);
     var invoke = function (token, fn, params) {
-        if (!g.isset(api[fn])) {
+        if (fn == '/ping') {
+            res.end("pong\n");
+        } else if (!g.isset(api[fn])) {
             res.end(api.error('not_found'));
         } else {
             var uid;
