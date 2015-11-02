@@ -71,7 +71,7 @@ If you want to run Node on your local machine, you need to install the neccessar
 
  ```
  cd /home/marc/workspace/bento/nodejs
- ./npm install socket.io redis express fs mysql bcrypt winston socket.io-redis uid2 uuid
+ npm install
  ```
 
  Here's what my `.gitignore` file looks like
