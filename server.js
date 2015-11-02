@@ -68,10 +68,12 @@ g.nio = nio;
 // prepare ssl credentials
 // XXX: Most browsers are configured by default to reject secure connections from servers with self-signed certificates.
 // To test locally, manually visit https://localhost:8081/ to trigger the warning page and add the exception.
+/*
 var options = {
     key : fs.readFileSync(conf.server.resources_dir + '/key.pem' ).toString(),
     cert: fs.readFileSync(conf.server.resources_dir + '/cert.pem').toString(),
 };
+*/
 
 g.server = http.createServer(function (req, res) {
 //g.server = https.createServer(options, function (req, res) {

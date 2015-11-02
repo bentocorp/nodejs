@@ -84,9 +84,14 @@ If you want to run Node on your local machine, you need to install the neccessar
  wget http://download.redis.io/releases/redis-3.0.4.tar.gz
  tar -xvf redis-3.0.4.tar.gz
  sudo mv redis-3.0.4 /opt
+ cd /opt/redis-3.0.4
+ make
+ cd ./src
+ ./redis-server (./redis-server & runs in background)
+
  ```
 
- Redis must be running when Node starts. If you look in `private.js`, Node is configured by default to connect to Redis at `localhost:3306` when it is running locally. You can change this if you want.
+ Redis must be running when Node starts. If you look in `private.js`, Node is configured by default to connect to Redis at `localhost:6379` when it is running locally. You can change this if you want.
 
 3. **MySQL.** When Node starts, it will try to connect to a MySQL database. You have two options:
   1. You can run a local instance of MySQL and configure Node to connect to the local instance. If you pick this option, you must create all the required tables yourself and populate them with mock data.
