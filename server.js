@@ -51,7 +51,7 @@ g.debug('Environment - {0}'.format(env));
 g.debug('Setting up database connectivity');
 g.mysql = new require('./db.js')(env);
 
-var conf = require('./private-NO-COMMIT.js')[env];
+var conf = require('./private.js')[env];
 
 /* redis */
 var redis = require('redis');

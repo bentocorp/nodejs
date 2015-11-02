@@ -1,0 +1,57 @@
+/**
+ * @author
+ * @copyright
+ * This file should never be committed to svc!
+ */
+module.exports = {
+	local: {
+		server: {
+      		port: 8081,
+      		resources_dir: './config/shared/local',
+    	},
+    	redis: {
+        	host: '127.0.0.1',
+      		port: 6379,
+    	},
+		mysql: {
+	  		host: 'localhost',
+	  		port: 3306,
+	    	username: 'bento',
+	    	password: '',
+	  	},
+	},
+	// bento-dev-node01
+	dev: {
+		server: {
+      		port: 8081,
+      		resources_dir: '../../shared/dev',
+    	},
+    	redis: {
+      		host: '',
+      		port: 6379,
+    	},
+    	mysql: {
+    		host: '',
+    		port: 3306,
+    		username: 'bento',
+    		password: '',
+    	},
+	},
+	// bento-prod-node01
+	prod: {
+		server: {
+			port: 8081,
+			resources_dir: './config/shared/prod',
+		},
+		redis: {
+			host: '',
+			port: 6379,
+		},
+		mysql: {
+			host: '',
+			port: 3306,
+			username: 'bento',
+			password: '',
+		},
+	},
+};

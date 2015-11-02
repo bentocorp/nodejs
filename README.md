@@ -26,7 +26,7 @@ cd /home/marc/workspace/bento/config
 cp myconfig.rb.DIST myconfig.rb
 ```
 
-Node also needs additional usernames and passwords to start. Those are stored in a file called `private-NO-COMMIT.js` and is not on Github. You will need to get this file from another developer and securely copy it to the project's root directory. **Do not commit this file to Github either!** To make sure you don't accidentally commit `myconfig.rb` and `private-NO-COMMIT.js`, add these files to your `.gitignore`.
+Node also needs additional usernames and passwords to start. Those are stored in a file called `private.js` and is not on Github. Its template is private.js.DIST. You will need to get this file from another developer and securely copy it to the project's root directory. **Do not commit this file to Github either!** To make sure you don't accidentally commit `myconfig.rb` and `private.js`, are in the `.gitignore`.
 
 Then to deploy (for example, to all dev hosts) execute the following command in the root directory
 
@@ -67,23 +67,14 @@ If you want to run Node on your local machine, you need to install the neccessar
  ln -s /opt/node-v0.12.7-linux-x64/bin/npm /usr/bin/npm
  ```
 
- Then install the necessary Node.js modules. Remember to add all these files to your `.gitignore` so you only commit Javascript source code. Please do not commit binaries or build files!
+ Then install the necessary Node.js modules. Remember to add all these files to your `.gitignore` so you only commit Javascript source code. Please do not commit binaries or build files! `node_modules` is already in the `.gitignore file`.
 
  ```
  cd /home/marc/workspace/bento/nodejs
  npm install
  ```
 
- Here's what my `.gitignore` file looks like
-
- ```
- .gitignore
- node
- npm
- node_modules
- config/myconfig.rb
- private-NO-COMMIT.js
- *.log
+ 
  ```
 
 2. **Redis.** Redis is the in-memory cache system that Node uses. Download the binaries at http://redis.io/download.
@@ -95,7 +86,7 @@ If you want to run Node on your local machine, you need to install the neccessar
  sudo mv redis-3.0.4 /opt
  ```
 
- Redis must be running when Node starts. If you look in `private-NO-COMMIT.js`, Node is configured by default to connect to Redis at `localhost:3306` when it is running locally. You can change this if you want.
+ Redis must be running when Node starts. If you look in `private.js`, Node is configured by default to connect to Redis at `localhost:3306` when it is running locally. You can change this if you want.
 
 3. **MySQL.** When Node starts, it will try to connect to a MySQL database. You have two options:
   1. You can run a local instance of MySQL and configure Node to connect to the local instance. If you pick this option, you must create all the required tables yourself and populate them with mock data.
@@ -111,7 +102,7 @@ If you want to run Node on your local machine, you need to install the neccessar
     ssh -N marc@bento-dev-api1 -L 3306:bento-dev-db1.cehcqzecegos.us-west-2.rds.amazonaws.com:3306
     ```
     
-    Then in `private-NO-COMMIT.js`, configure Node to connect to the database at `localhost:3306`. Note that this is the default configuration and has already been done for you.
+    Then in `private.js`, configure Node to connect to the database at `localhost:3306`. Note that this is the default configuration and has already been done for you.
 
 Once you have all the dependencies installed and set up, you can start Node with the following command
 

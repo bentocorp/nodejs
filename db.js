@@ -3,7 +3,7 @@
  * @copyright
  */
 var g     = require('./global.js'),
-	conf  = require('./private-NO-COMMIT.js');
+	conf  = require('./private.js');
 	mysql = require('mysql'),
 
 // see https://codeforgeek.com/2015/01/nodejs-mysql-tutorial/
