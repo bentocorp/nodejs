@@ -63,8 +63,8 @@ If you want to run Node on your local machine, you need to install the neccessar
 
  ```
  cd /home/marc/workspace/bento/nodejs
- ln -s /opt/node-v0.12.7-linux-x64/bin/node node
- ln -s /opt/node-v0.12.7-linux-x64/bin/npm npm
+ ln -s /opt/node-v0.12.7-linux-x64/bin/node /usr/bin/node
+ ln -s /opt/node-v0.12.7-linux-x64/bin/npm /usr/bin/npm
  ```
 
  Then install the necessary Node.js modules. Remember to add all these files to your `.gitignore` so you only commit Javascript source code. Please do not commit binaries or build files!
