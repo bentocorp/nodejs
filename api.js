@@ -253,7 +253,7 @@ module.exports = {
             if (g.isset(fn)) fn(self._error(1, 'Missing to, subject, or body parameter(s)'));
             return;
         }
-        var timestamp = g.getOrElse(params['timestamp'], -1);
+        var timestamp = g.getOrElse(params['timestamp'], new Date().getTime());
         var p = {
             rid: rid, from: from, to: to, subject: subject, body: JSON.parse(body), timestamp: timestamp,
         };
