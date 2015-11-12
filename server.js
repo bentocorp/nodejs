@@ -37,6 +37,7 @@ for (var i = 2; i < process.argv.length; i++) {
         case '--server-id':
             serverId = process.argv[++i]; break; // Server uuid (for testing only!)
         case '--no-auth':
+            g.debug('ATTENTION - The "--no-auth" option was detected! All tokens will be considered valid.');
             requireToken = false; break; // If false, any token works
         default:
             throw 'Unrecognized argument: ' + process.argv[i];

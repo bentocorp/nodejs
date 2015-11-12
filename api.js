@@ -302,11 +302,17 @@ module.exports = {
     '/api/gloc': function (params, fn) {
         var uid = params['uid'],
             clientId = params['clientId'];
+        if (g.empty(clientId)) {
+            fn(self._error(1, 'Error - Missing clientId parameter'));
+            return;
+        }
+        //g.debug("GET " + self._cacheKeyLatLng(clientId));
         g['redis'].GET(self._cacheKeyLatLng(clientId), function (err, ret) {
             if (err) {
                 fn(self._error(1, 'Error fetching ' + self._cacheKeyLatLng(clientId) + ' - ' + err));
             } else {
                 var obj = null;
+                //g.debug("/api/gloc " + ret);
                 if (!g.empty(ret)) {
                     obj = JSON.parse(ret);
                     obj.clientId = clientId;
