@@ -16,7 +16,7 @@ module.exports = {
 
     _deliver: function (clientId, msg) {
         if (g.isconnected(clientId)) {
-            console.log('Push - {0}, {1}'.format(clientId, msg));
+            //console.log('Push - {0}, {1}'.format(clientId, msg));
             g.io.sockets.in(String(clientId)).emit(self.WS_PUSH, msg);
             return true;
         }
