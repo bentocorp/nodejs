@@ -198,16 +198,17 @@ g.io.on('connection', function (soc) {
             callback(api.error('malformed_request'));
             return;
         }
-        var urlParts = decodeURI(data).split('?');
+        var urlParts = data.split('?');
         // fn - the API function to invoke
         var fn = urlParts[0], params = { sid: soc.id };
         if (g.isset(urlParts[1])) {
             var query = urlParts[1].split('&');
             for (var i = 0; i < query.length; i++) {
                 var kv = query[i].split('=');
-                params[kv[0]] = kv[1];
+                params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
             }
         }
+        //console.log(params);
         if (!g.isset(api[fn])) {
             callback(api.error('not_found'));
         } else if (fn == '/api/authenticate') {
