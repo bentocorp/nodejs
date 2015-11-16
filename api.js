@@ -116,6 +116,9 @@ module.exports = {
                 var pk = res[0]['pk'];
                 var clientId = '{0}-{1}'.format(type.substring(0, 1), pk); // c-500
                 var hash = res[0]['password'];
+                // Laravel generates bcrypt hashes with a new "2y" prefix (to address a bug in PHP) that is
+                // not compatible with other Java/JavaScript libraries
+                hash = hash.replace(/^\$2y/, '$2a');
                 // Async compare using bcrypt
                 bcrypt.compare(password, hash, function (err, res) {
                     if (err) {
