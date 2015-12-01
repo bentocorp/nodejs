@@ -268,9 +268,20 @@ g.io.on('connection', function (soc) {
         }
     });
 
-    soc.on('pong', function (msg) {
+    soc.on('ping', function (msg) {
         g.debug(msg);
+        soc.emit('pong', msg);
     });
+    if (env != 'prod') {
+        var periodicallyEmitTs = function (ms) {
+            setTimeout(function () {
+                soc.emit('pong', new Date());
+                periodicallyEmitTs(ms);
+            }, ms);
+        };
+        g.debug('On ' + env + '; emitting timestamp on "pong" channel every second');
+        periodicallyEmitTs(1000); // 1 second
+    }
 });
 
 /* Start the server */
