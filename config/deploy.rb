@@ -37,8 +37,7 @@ set :deploy_to, '/sites/node'
 
 namespace :deploy do
 	after :finished, :setup_server
-	after :setup_server, :stop_server
-	after :stop_server, :start_server
+	after :setup_server, :restart_server
 
   after :restart, :clear_cache do
     on roles(:web), in: :groups, limit: 3, wait: 10 do

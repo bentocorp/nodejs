@@ -73,7 +73,7 @@ task :setup_server do
 end
 
 desc "Start the server"
-task :start_server do
+task :start do
 	on roles(:all) do |host|
 		# huponexit is off in Capistrano shell so sub-processes will continue to run after exit (nohup not required)
 		# Not sure why, but the brackets are required to start the server as a background process
@@ -82,7 +82,7 @@ task :start_server do
 end
 
 desc "Stop the server"
-task :stop_server do
+task :stop do
 	on roles(:all) do |host|
 		execute "ps -e | grep -oP '^\s*[0-9]+(?=\s.+\snode$)' | sed -e 's/\s\+//g' | xargs kill -9"
 	end
@@ -91,7 +91,7 @@ end
 desc "Restart the server"
 task :restart_server do
 	on roles(:all) do |host|
-		stop_server
-		start_server
+		invoke 'stop'
+		invoke 'start'
 	end
 end
