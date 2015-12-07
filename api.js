@@ -266,7 +266,7 @@ module.exports = {
             // Enqueue push notification then schedule a pop
             for (var i = 0; i < recipient.length; i++) {
                 p.to = recipient[i];
-                push.queue(String(recipient[i]), JSON.stringify(p));
+                push.send(String(recipient[i]), JSON.stringify(p));
             }
             if (g.isset(fn)) fn(self._success('ok'));
         } else if ('*' === recipient) {
@@ -277,7 +277,7 @@ module.exports = {
                     g.error('Error getting members for ' + that._cacheKeyGroup(recipient) + ' - ' + err);
                 } else {
                     for (var i = 0; i < ret.length; i++) {
-                        push.queue(String(ret[i]), JSON.stringify(p));
+                        push.send(String(ret[i]), JSON.stringify(p));
                     }
                     if (g.isset(fn)) fn(that._success('ok'));
                 }

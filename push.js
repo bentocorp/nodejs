@@ -55,11 +55,11 @@ module.exports = {
         });
     },
 
-    queue: function (clientId, msg) {
+    send: function (clientId, msg, queue) {
         // deliver immediately if the user is online, otherwise queue in redis
         if (self._deliver(clientId, msg)) {
             self.flush(clientId);
-        } else {
+        } else if (queue) {
             g['redis'].RPUSH(self._cacheKey(clientId), msg, function (err, ret) {
                 if (err != null) {
                     g.error('Error - ' + err);
