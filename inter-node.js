@@ -44,7 +44,9 @@ module.exports = function (redis, conf, id) {
 		}
 	};
 
-	var activeInterval = 1000; // ms
+	// Increasing activeInterval to 3000 ms because 1000 ms may have been too short. In one incident, missed heartbeats (due to network
+	// latency?) caused all servers to believe the other had disconnected then reconnected in under 1 second.
+	var activeInterval = 3000; // ms
 	this.checkIfServerActive = function (uuid) {
 		var socs = g.sockets[uuid];
 		if (!g.isset(socs)) {
