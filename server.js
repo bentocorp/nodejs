@@ -272,7 +272,8 @@ g.io.on('connection', function (soc) {
         g.debug(msg);
         soc.emit('pong', msg);
     });
-    if (env != 'prod') {
+    if (true) {
+    //if (env != 'prod') {
         var periodicallyEmitTs = function (ms) {
             setTimeout(function () {
                 soc.emit('pong', new Date());
