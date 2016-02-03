@@ -82,7 +82,7 @@ g.server = http.createServer(function (req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'text/json');
     res.writeHead(200);
-    var invoke = function (token, fn, params) {
+    var invoke = function (token, fn, params, reqType) {
         if (fn == '/ping') {
             res.end("pong\n");
         } else if (!g.isset(api[fn])) {
@@ -115,6 +115,7 @@ g.server = http.createServer(function (req, res) {
                 // Turns out the context must be supplied manually so that the keyword this
                 // works properly in the module.
                 api[fn].apply(api, [params, function (resp) {
+                    g.debug(reqType + ' done - ' + JSON.stringify(resp));
                     res.end(resp);      
                 }]);
             } catch (err) {
@@ -131,22 +132,28 @@ g.server = http.createServer(function (req, res) {
             body += data;
         });
         req.on('end', function () {
-            console.log('received this from post request: ' + body);
+            var params = { },
+                parts  = body.replace(/\+/g, ' ').split('&');
+            for (var i = 0; i < parts.length; i++) {
+                var kv = parts[i].split('=');
+                params[kv[0]] = decodeURIComponent(kv[1]);
+            }
+            invoke(params['token'], req.url, params, "POST");
         });
-        // not supported for now
-        res.end(api.error('not_found'));
     } else {
         var urlParts = url.parse(req.url, true);
         var token = urlParts.query['token'];
         var fn = urlParts.pathname;
-        invoke(token, fn, urlParts.query);
+        invoke(token, fn, urlParts.query, "GET");
     }
 });
 
 /* WebSocket */
 
 // Attach socket.io to the above HTTP server
-g.io = require('socket.io')(g.server);
+g.io = require('socket.io')(g.server, { pingTimeout : 5000,
+                                        pingInterval: 1000,
+                                      });
 
 g.io.adapter(require('socket.io-redis')({ host: conf.redis.host, port: conf.redis.port }));
 
@@ -251,7 +258,10 @@ g.io.on('connection', function (soc) {
     // All clients must authenticate in the allotted timeframe, otherwise the connection will be terminated
     setTimeout(function () {
         if (!soc.authenticated && soc.connected) {
-            g.debug('Disconnecting ' + soc.name + ' for failure to authenticate');
+            // How do we forward an error message?
+            g.debug('Disconnecting ' + soc.name + ' for failure to authenticate.\n' +
+                    'If you received an access token but are still being disconnected, it may because you\n' +
+                    'authenticated via GET instead of WebSocket.');
             // This is the only time the server calls disconnect. The behavior is different such that
             // if the server shuts down, while the connection is lost, resuming does not force the 
             // user to re-authenticate.
