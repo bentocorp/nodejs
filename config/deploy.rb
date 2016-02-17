@@ -36,8 +36,13 @@ set :deploy_to, '/sites/node'
 # set :keep_releases, 5
 
 namespace :deploy do
-	after :finished, :setup_server
-	after :setup_server, :restart_server
+	after :finished, :chmod_775 do
+    on roles(:all) do |host|
+      execute "sudo chmod -R 775 /sites/node/current"
+    end
+  end
+  after :chmod_775, :setup_server
+  after :setup_server, :restart_server
 
   after :restart, :clear_cache do
     on roles(:web), in: :groups, limit: 3, wait: 10 do
