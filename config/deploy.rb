@@ -38,7 +38,7 @@ set :deploy_to, '/sites/node'
 namespace :deploy do
 	after :finished, :chmod_775 do
     on roles(:all) do |host|
-      execute "sudo chmod -R 775 /sites/node/current"
+      execute "sudo chmod -R 775 /sites"
     end
   end
   after :chmod_775, :setup_server
