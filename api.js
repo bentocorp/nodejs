@@ -375,7 +375,34 @@ module.exports = {
     },
 
     '/api/untrack': function (params, fn) {
-        fn(self._error(1, '/api/untrack not implemented yet =('));
+        var uid = params['uid'],
+            clientId = params['clientId'];
+        if (!g.isset(uid) || !g.isset(clientId)) {
+            fn(self._error(1, 'Error - missing paramters uid or clientId'));
+            return;
+        }
+        g['redis'].SREM(self._cacheKeyTrackList(uid), clientId, function (err, ret) {
+            if (err) {
+                fn(self._error(1, err));
+            } else {
+                g.nio.broadcastTrack(uid, clientId, true); // untrack=true
+                var connected = g.isconnected(clientId);
+                fn(self._success({
+                    'clientId': clientId, 'connected': connected,
+                }));
+            }
+        }); // g['redis'].SREM
+    },
+
+    '/api/trklst': function (params, fn) {
+        var uid = params['uid'];
+        g['redis'].SMEMBERS(self._cacheKeyTrackList(uid), function (err, ret) {
+            if (err) {
+                fn(self._error(1, err));
+            } else {
+                fn(self._success(ret));
+            }
+        }); // g['redis'].SMEMBERS
     },
 };
 that = module.exports;
