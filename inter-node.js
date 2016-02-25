@@ -214,8 +214,20 @@ module.exports = function (redis, conf, id) {
 					}
 				}
 				if (joined) {
-				    console.log('    {0} joining {1}'.format(slave, room));
+				    g.debug('    {0} joining {1}'.format(slave, room));
 				}
+				break;
+			case 'soc-action-untrack':
+				var obj  = JSON.parse(msg),
+					slave  = obj.slave,
+					master = obj.master;
+				var sids = g.getSocketIds(uuid, slave);
+				for (var i = 0; i < sids.length; i++) {
+					var soc = g.io.sockets.connected[sids[i]];
+					var room = g.roomTrackers(master);
+					soc.leave(room);
+				}
+				g.debug('    {0} left {1}'.format(slave, room));
 				break;
 			default:
 				g.debug('warning - msg event on unrecognized channel ' + channel);
@@ -226,11 +238,17 @@ module.exports = function (redis, conf, id) {
 		writer.publish('sigint', uuid);
 	};
 
-	this.broadcastTrack = function (slave, master) {
+	this.broadcastTrack = function (slave, master, b) {
 		obj = {
-			'slave': slave, 'master': master
+			'slave': slave, 'master': master,
 		}
-		writer.publish('soc-action', JSON.stringify(obj));
+		g.debug(b);
+		if (b) {
+			g.debug('here emitting untrack eevent');
+			writer.publish('soc-action-untrack', JSON.stringify(obj));
+		} else {
+			writer.publish('soc-action', JSON.stringify(obj));
+		}
 	};
 
 	client0.subscribe('sigint');
@@ -238,6 +256,7 @@ module.exports = function (redis, conf, id) {
 	client0.subscribe(String(uuid) + '-inbox');
 	client0.subscribe('soc-info');
 	client0.subscribe('soc-action');
+	client0.subscribe('soc-action-untrack');
 
 	var heartbeatInterval = 500; // ms
 	this.beat = function () {
