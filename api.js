@@ -97,9 +97,10 @@ module.exports = {
     '/api/authenticate': function (params, fn) {
         var username = params['username'],
             password = params['password'],
+            token    = params['token'],
             type     = params['type'], // customer, driver, admin, or system
             table    = g.mysql[type];
-        if (!g.isset(username) || !g.isset(password) || !g.isset(type)) {
+        if (!g.isset(username) || (!g.isset(password) && !g.isset(token)) || !g.isset(type)) {
             fn(self._error(1, 'Missing username, password, or login type'));
             return;
         }
@@ -109,6 +110,21 @@ module.exports = {
             return;
         }
         g.debug('Fetching authentication credentials');
+        if (token) {
+            table.getTokenByEmail(username, function (rows) {
+                if (rows == null) {
+                    fn(self._error(1, 'Database error during authentication'));
+                } else if (rows[0]['api_token'] == token) {
+                    fn(that._success("ok"));
+                } else {
+                    g.debug(rows);
+                    g.debug(rows[0]['api_token']);
+                    g.debug(token);
+                    fn(self.error('bad_auth'));
+                }
+            });
+            return;
+        }
         table.getAuth(username, function (res) {
             if (res == null) {
                 fn(self._error(1, 'Database error during authentication'));
