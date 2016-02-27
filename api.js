@@ -111,11 +111,14 @@ module.exports = {
         }
         g.debug('Fetching authentication credentials');
         if (token) {
-            table.getTokenByEmail(username, function (rows) {
+            table.getAuth(username, function (rows) {
                 if (rows == null) {
                     fn(self._error(1, 'Database error during authentication'));
                 } else if (rows[0]['api_token'] == token) {
-                    fn(that._success("ok"));
+                    var clientId = type.charAt(0) + "-" + rows[0]['pk']; // c-123
+                    var dummy =  clientId + '-0-' + rows[0]['api_token']; // Node-format
+                    g.tokens[clientId] = dummy;
+                    fn(that._success({ token: dummy }));
                 } else {
                     g.debug(rows);
                     g.debug(rows[0]['api_token']);
