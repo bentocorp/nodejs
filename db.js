@@ -92,18 +92,6 @@ module.exports = function (env) {
 		});
 	};
 
-	Table.prototype.getTokenByEmail = function (email, callback) {
-		var sql = "select api_token from {0} where email='{1}'".format(this.name, email);
-		_pool.query(sql, function (err, rows, fields) {
-			if (err) {
-				g.error('Error fetching token from database by email - ' + err.message);
-				throw err;
-			} else {
-				callback(rows);
-			}
-		});
-	};
-
 	Table.prototype.getAuth = function (username, callback) {
 		var sql = "select pk_{0} as pk, {1} as username, {2} as password, {3} as api_token from {0} where {1}='{4}'"
 			.format(this.name, this.colUsername, this.colPassword, this.colToken, username);
