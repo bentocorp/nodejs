@@ -7,3 +7,4 @@ private-NO-COMMIT.js
 private.js
 *.log
 /nbproject/private/
+/.capistrano

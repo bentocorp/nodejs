@@ -242,7 +242,7 @@ module.exports = function (redis, conf, id) {
 		obj = {
 			'slave': slave, 'master': master,
 		}
-		g.debug(b);
+		//g.debug(b);
 		if (b) {
 			g.debug('here emitting untrack eevent');
 			writer.publish('soc-action-untrack', JSON.stringify(obj));

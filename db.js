@@ -19,7 +19,7 @@ module.exports = function (env) {
 		port: _conf.port,
 		user: _conf.username,
 		password: _conf.password,
-		database: 'bento',
+		database: 'bento_dev',
 		debug: false,//true,
 		queueLimit: 0,
 		//acquireTimeout: 5000,

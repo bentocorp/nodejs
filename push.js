@@ -56,6 +56,9 @@ module.exports = {
     },
 
     send: function (clientId, msg, queue) {
+        
+        console.log("clientid: " + clientId + " msg: " + msg);
+        
         // deliver immediately if the user is online, otherwise queue in redis
         if (self._deliver(clientId, msg)) {
             self.flush(clientId);
