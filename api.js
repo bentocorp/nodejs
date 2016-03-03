@@ -391,12 +391,10 @@ module.exports = {
     },
 
     '/api/untrack': function (params, fn) {
-<<<<<<< HEAD
+
         var uid = params['uid'],
-=======
-        var uid      = params['uid'],
->>>>>>> order-ahead
-            clientId = params['clientId'];
+        clientId = params['clientId'];
+
         if (!g.isset(uid) || !g.isset(clientId)) {
             fn(self._error(1, 'Error - missing paramters uid or clientId'));
             return;
