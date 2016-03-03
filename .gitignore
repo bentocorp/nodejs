@@ -8,3 +8,4 @@ private.js
 *.log
 /nbproject/private/
 /.capistrano
+/dump.rdb
