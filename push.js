@@ -16,7 +16,7 @@ module.exports = {
 
     _deliver: function (clientId, msg) {
         if (g.isconnected(clientId)) {
-            //console.log('Push - {0}, {1}'.format(clientId, msg));
+            console.log('Push - {0}, {1}'.format(clientId, msg));
             g.io.sockets.in(String(clientId)).emit(self.WS_PUSH, msg);
             return true;
         }
@@ -56,6 +56,9 @@ module.exports = {
     },
 
     send: function (clientId, msg, queue) {
+        
+        //console.log("clientid: " + clientId + " msg: " + msg);
+        
         // deliver immediately if the user is online, otherwise queue in redis
         if (self._deliver(clientId, msg)) {
             self.flush(clientId);

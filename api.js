@@ -302,6 +302,22 @@ module.exports = {
         return uid + '_trackList';
     },
 
+
+    /**
+     * Get client location via get request.
+     * e.g.: https://node.bentonow.com:8443/api/gloc?token=c-1-0-randombits&clientId=d-8
+     * 
+     * Get the client location via the existing socket
+     * e.g.: sock.emit('get', '/api/gloc?clientId=d-8', callbackFn(res));
+     * Sockets have no concept of get or post.
+     * 
+     * clientId=d-8
+     * See db.js for other prefixes
+     * 
+     * @param {type} params
+     * @param {type} fn
+     * @returns {undefined}
+     */
     '/api/gloc': function (params, fn) {
         var uid = params['uid'],
             clientId = params['clientId'];
@@ -375,7 +391,11 @@ module.exports = {
     },
 
     '/api/untrack': function (params, fn) {
+<<<<<<< HEAD
         var uid = params['uid'],
+=======
+        var uid      = params['uid'],
+>>>>>>> order-ahead
             clientId = params['clientId'];
         if (!g.isset(uid) || !g.isset(clientId)) {
             fn(self._error(1, 'Error - missing paramters uid or clientId'));
