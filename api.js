@@ -360,6 +360,13 @@ module.exports = {
         });
     },
   
+    /**
+     * Set location.
+     * 
+     * @param {type} params
+     * @param {type} fn
+     * @returns {undefined}
+     */
     '/api/uloc': function (params, fn) {
         var uid = params['uid'],
             lat = params['lat'],
@@ -392,7 +399,8 @@ module.exports = {
         g['redis'].SADD(self._cacheKeyTrackList(uid), clientId, function (err, ret) {
             if (err) {
                 fn(self._error(1, err));
-            } else {
+            } 
+            else {
                 g.nio.broadcastTrack(uid, clientId);
                 var connected = g.isconnected(clientId);
                 fn(self._success({
