@@ -111,21 +111,31 @@ module.exports = {
         }
         g.debug('Fetching authentication credentials');
         if (token) {
-            table.getAuth(username, function (rows) {
-                if (rows == null) {
-                    fn(self._error(1, 'Database error during authentication'));
-                } else if (rows[0]['api_token'] == token) {
-                    var clientId = type.charAt(0) + "-" + rows[0]['pk']; // c-123
-                    var dummy =  clientId + '-0-' + rows[0]['api_token']; // Node-format
-                    g.tokens[clientId] = dummy;
-                    fn(that._success({ token: dummy }));
-                } else {
-                    g.debug(rows);
-                    g.debug(rows[0]['api_token']);
-                    g.debug(token);
-                    fn(self.error('bad_auth'));
-                }
-            });
+            try {
+                table.getAuth(username, function (rows) {
+                    if (rows == null) 
+                    {
+                        fn(self._error(1, 'Database error during authentication (1)'));
+                    } 
+                    else if (rows[0]['api_token'] == token) 
+                    {
+                        var clientId = type.charAt(0) + "-" + rows[0]['pk']; // c-123
+                        var dummy =  clientId + '-0-' + rows[0]['api_token']; // Node-format
+                        g.tokens[clientId] = dummy;
+                        fn(that._success({ token: dummy }));
+                    } 
+                    else 
+                    {
+                        g.debug(rows);
+                        g.debug(rows[0]['api_token']);
+                        g.debug(token);
+                        fn(self.error('bad_auth'));
+                    }
+                });
+            } catch (err) {
+                fn(self._error(1, 'Database error during authentication (2)'));
+            } 
+            
             return;
         }
         table.getAuth(username, function (res) {
@@ -387,6 +397,15 @@ module.exports = {
         }); // g['redis'].SET
     },
 
+    /**
+     * 
+     * https://bentonow.slack.com/archives/engineering/p1458164194000005
+     * On the client (app), you need to filter for stale data, and then untrack accordingly
+     * 
+     * @param {type} params
+     * @param {type} fn
+     * @returns {undefined}
+     */
     '/api/track': function (params, fn) {
         var uid = params['uid'],
             clientId = params['clientId'];
